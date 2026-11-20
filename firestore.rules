@@ -1,0 +1,307 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 2 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'eslamkhalifa244@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- Validation Blueprints ---
+    function isValidReciter(data) {
+      return data.keys().hasAll(['id', 'nameAr', 'nameEn', 'titleAr', 'bioAr', 'photoUrl', 'featured', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'nameAr', 'nameEn', 'titleAr', 'bioAr', 'birthYear', 'deathYear', 'originAr', 'photoUrl', 'photoSource', 'featured', 'updatedAt'])
+        && isValidId(data.id)
+        && data.nameAr is string && data.nameAr.size() >= 2 && data.nameAr.size() <= 120
+        && data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 120
+        && data.titleAr is string && data.titleAr.size() >= 2 && data.titleAr.size() <= 160
+        && data.bioAr is string && data.bioAr.size() >= 10 && data.bioAr.size() <= 2000
+        && data.photoUrl is string && data.photoUrl.size() >= 1 && data.photoUrl.size() <= 500
+        && data.featured is bool
+        && data.updatedAt is timestamp
+        && (!('birthYear' in data) || (data.birthYear is string && data.birthYear.size() <= 32))
+        && (!('deathYear' in data) || (data.deathYear is string && data.deathYear.size() <= 32))
+        && (!('originAr' in data) || (data.originAr is string && data.originAr.size() <= 120))
+        && (!('photoSource' in data) || (data.photoSource is string && data.photoSource.size() <= 300));
+    }
+
+    function isValidRecitation(data) {
+      return data.keys().hasAll(['id', 'reciterId', 'surahNumber', 'surahNameAr', 'style', 'audioUrl', 'isAvailable', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'reciterId', 'surahNumber', 'surahNameAr', 'style', 'riwayah', 'audioUrl', 'durationLabel', 'isAvailable', 'sourceName', 'playsCount', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.reciterId)
+        && data.surahNumber is int && data.surahNumber >= 1 && data.surahNumber <= 114
+        && data.surahNameAr is string && data.surahNameAr.size() >= 2 && data.surahNameAr.size() <= 80
+        && data.style is string && data.style in ['مرتل', 'مجود', 'حفل إذاعي', 'معلم']
+        && data.audioUrl is string && data.audioUrl.size() <= 500
+        && data.isAvailable is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('riwayah' in data) || (data.riwayah is string && data.riwayah.size() <= 80))
+        && (!('durationLabel' in data) || (data.durationLabel is string && data.durationLabel.size() <= 32))
+        && (!('sourceName' in data) || (data.sourceName is string && data.sourceName.size() <= 160))
+        && (!('playsCount' in data) || (data.playsCount is int && data.playsCount >= 0));
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'role', 'preferredFontSize', 'preferredPlaybackRate', 'lastReadSurah', 'lastReadAyah', 'lastReadPage', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.role is string && data.role in ['user', 'admin']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && (!('preferredFontSize' in data) || (data.preferredFontSize is int && data.preferredFontSize >= 18 && data.preferredFontSize <= 48))
+        && (!('preferredPlaybackRate' in data) || (data.preferredPlaybackRate is number && data.preferredPlaybackRate >= 0.5 && data.preferredPlaybackRate <= 2.0))
+        && (!('lastReadSurah' in data) || (data.lastReadSurah is int && data.lastReadSurah >= 1 && data.lastReadSurah <= 114))
+        && (!('lastReadAyah' in data) || (data.lastReadAyah is int && data.lastReadAyah >= 1 && data.lastReadAyah <= 286))
+        && (!('lastReadPage' in data) || (data.lastReadPage is int && data.lastReadPage >= 1 && data.lastReadPage <= 604));
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'targetId', 'title', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'type', 'targetId', 'title', 'subtitle', 'audioUrl', 'reciterId', 'surahNumber', 'ayahNumber', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && data.type is string && data.type in ['recitation', 'reciter', 'ayah']
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 120
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.createdAt is timestamp
+        && (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 240))
+        && (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 500))
+        && (!('reciterId' in data) || (data.reciterId is string && data.reciterId.size() <= 64))
+        && (!('surahNumber' in data) || (data.surahNumber is int && data.surahNumber >= 1 && data.surahNumber <= 114))
+        && (!('ayahNumber' in data) || (data.ayahNumber is int && data.ayahNumber >= 1 && data.ayahNumber <= 286));
+    }
+
+    function isValidHistoryItem(data) {
+      return data.keys().hasAll(['id', 'userId', 'reciterId', 'reciterName', 'surahNumber', 'surahName', 'audioUrl', 'progressSeconds', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'reciterId', 'reciterName', 'surahNumber', 'surahName', 'style', 'audioUrl', 'progressSeconds', 'durationSeconds', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && data.reciterId is string && data.reciterId.size() >= 1 && data.reciterId.size() <= 64
+        && data.reciterName is string && data.reciterName.size() >= 1 && data.reciterName.size() <= 120
+        && data.surahNumber is int && data.surahNumber >= 1 && data.surahNumber <= 114
+        && data.surahName is string && data.surahName.size() >= 1 && data.surahName.size() <= 80
+        && data.audioUrl is string && data.audioUrl.size() <= 500
+        && data.progressSeconds is number && data.progressSeconds >= 0
+        && data.updatedAt is timestamp
+        && (!('style' in data) || (data.style is string && data.style.size() <= 60))
+        && (!('durationSeconds' in data) || (data.durationSeconds is number && data.durationSeconds >= 0));
+    }
+
+    function isValidPlaylist(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'name', 'description', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('description' in data) || (data.description is string && data.description.size() <= 300));
+    }
+
+    function isValidPlaylistTrack(data) {
+      return data.keys().hasAll(['id', 'userId', 'playlistId', 'reciterId', 'reciterName', 'surahNumber', 'surahName', 'audioUrl', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'playlistId', 'reciterId', 'reciterName', 'surahNumber', 'surahName', 'style', 'audioUrl', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && isValidId(data.playlistId)
+        && data.reciterId is string && data.reciterId.size() >= 1 && data.reciterId.size() <= 64
+        && data.reciterName is string && data.reciterName.size() >= 1 && data.reciterName.size() <= 120
+        && data.surahNumber is int && data.surahNumber >= 1 && data.surahNumber <= 114
+        && data.surahName is string && data.surahName.size() >= 1 && data.surahName.size() <= 80
+        && data.audioUrl is string && data.audioUrl.size() >= 1 && data.audioUrl.size() <= 500
+        && data.createdAt is timestamp
+        && (!('style' in data) || (data.style is string && data.style.size() <= 60));
+    }
+
+    function isValidAppConfig(data) {
+      return data.keys().hasAll(['id', 'version', 'theme', 'texts', 'images', 'homeSections', 'navPages', 'ota', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'version', 'theme', 'texts', 'images', 'homeSections', 'navPages', 'ota', 'updatedBy', 'updatedAt'])
+        && isValidId(data.id)
+        && data.version is int && data.version >= 1
+        && data.theme is map
+        && data.theme.keys().hasAll(['presetId', 'bgObsidian', 'bgSurface', 'bgElevated', 'emeraldDeep', 'emeraldSoft', 'goldAntique', 'textPrimary', 'textSecondary'])
+        && data.theme.keys().hasOnly(['presetId', 'bgObsidian', 'bgSurface', 'bgElevated', 'emeraldDeep', 'emeraldSoft', 'goldAntique', 'textPrimary', 'textSecondary'])
+        && data.theme.presetId is string && data.theme.presetId.size() <= 40
+        && data.theme.bgObsidian is string && data.theme.bgObsidian.size() <= 16
+        && data.theme.bgSurface is string && data.theme.bgSurface.size() <= 16
+        && data.theme.bgElevated is string && data.theme.bgElevated.size() <= 16
+        && data.theme.emeraldDeep is string && data.theme.emeraldDeep.size() <= 16
+        && data.theme.emeraldSoft is string && data.theme.emeraldSoft.size() <= 16
+        && data.theme.goldAntique is string && data.theme.goldAntique.size() <= 16
+        && data.theme.textPrimary is string && data.theme.textPrimary.size() <= 16
+        && data.theme.textSecondary is string && data.theme.textSecondary.size() <= 16
+        && data.texts is map
+        && data.texts.keys().hasAll(['siteName', 'slogan', 'heroBadge', 'heroTitle', 'heroSubtitle', 'ctaListenLabel', 'ctaMushafLabel', 'ctaTahfeezLabel', 'announcementEnabled', 'announcementText', 'mushafShowcaseTitle', 'mushafShowcaseSubtitle', 'footerDescription'])
+        && data.texts.keys().hasOnly(['siteName', 'slogan', 'heroBadge', 'heroTitle', 'heroSubtitle', 'ctaListenLabel', 'ctaMushafLabel', 'ctaTahfeezLabel', 'announcementEnabled', 'announcementText', 'mushafShowcaseTitle', 'mushafShowcaseSubtitle', 'footerDescription'])
+        && data.texts.siteName is string && data.texts.siteName.size() <= 100
+        && data.texts.slogan is string && data.texts.slogan.size() <= 120
+        && data.texts.heroBadge is string && data.texts.heroBadge.size() <= 120
+        && data.texts.heroTitle is string && data.texts.heroTitle.size() <= 300
+        && data.texts.heroSubtitle is string && data.texts.heroSubtitle.size() <= 600
+        && data.texts.ctaListenLabel is string && data.texts.ctaListenLabel.size() <= 60
+        && data.texts.ctaMushafLabel is string && data.texts.ctaMushafLabel.size() <= 60
+        && data.texts.ctaTahfeezLabel is string && data.texts.ctaTahfeezLabel.size() <= 60
+        && data.texts.announcementEnabled is bool
+        && data.texts.announcementText is string && data.texts.announcementText.size() <= 300
+        && data.texts.mushafShowcaseTitle is string && data.texts.mushafShowcaseTitle.size() <= 200
+        && data.texts.mushafShowcaseSubtitle is string && data.texts.mushafShowcaseSubtitle.size() <= 500
+        && data.texts.footerDescription is string && data.texts.footerDescription.size() <= 600
+        && data.images is map
+        && data.images.keys().hasAll(['heroBackdropUrl'])
+        && data.images.keys().hasOnly(['heroBackdropUrl'])
+        && data.images.heroBackdropUrl is string && data.images.heroBackdropUrl.size() <= 600
+        && data.homeSections is list && data.homeSections.size() >= 1 && data.homeSections.size() <= 12 && data.homeSections[0] is map
+        && data.navPages is list && data.navPages.size() >= 1 && data.navPages.size() <= 10 && data.navPages[0] is map
+        && data.ota is map
+        && data.ota.keys().hasAll(['manifestUrl', 'autoCheck', 'releaseNotes'])
+        && data.ota.keys().hasOnly(['manifestUrl', 'autoCheck', 'releaseNotes'])
+        && data.ota.manifestUrl is string && data.ota.manifestUrl.size() <= 500
+        && data.ota.autoCheck is bool
+        && data.ota.releaseNotes is string && data.ota.releaseNotes.size() <= 500
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection health check doc
+    match /test/connection {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // Admin registry
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list, write: if false;
+    }
+
+    // Public Dynamic Remote Configuration (Admin-managed, cached offline on clients & APKs)
+    match /app_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if false;
+      allow create: if isAdmin() && isValidId(configId) && isValidAppConfig(incoming()) && incoming().id == configId && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(configId) && isValidAppConfig(incoming()) && incoming().id == existing().id && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['version', 'theme', 'texts', 'images', 'homeSections', 'navPages', 'ota', 'updatedBy', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+
+    // Public Quran Reciters Catalog (Admin-managed)
+    match /reciters/{reciterId} {
+      allow get: if isValidId(reciterId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(reciterId) && isValidReciter(incoming()) && incoming().id == reciterId && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(reciterId) && isValidReciter(incoming()) && incoming().id == existing().id && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['nameAr', 'nameEn', 'titleAr', 'bioAr', 'birthYear', 'deathYear', 'originAr', 'photoUrl', 'photoSource', 'featured', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(reciterId);
+    }
+
+    // Public Curated Recitations Catalog (Admin-managed)
+    match /recitations/{recitationId} {
+      allow get: if isValidId(recitationId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(recitationId) && isValidRecitation(incoming()) && incoming().id == recitationId && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(recitationId) && isValidRecitation(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['reciterId', 'surahNumber', 'surahNameAr', 'style', 'riwayah', 'audioUrl', 'durationLabel', 'isAvailable', 'sourceName', 'playsCount', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(recitationId);
+    }
+
+    // User Profiles (PII-isolated)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && isValidUserProfile(incoming()) && incoming().uid == userId && incoming().createdAt == request.time && incoming().updatedAt == request.time && ((isOwner(userId) && incoming().role == 'user') || isAdmin());
+      allow update: if isValidId(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time && (
+        (isOwner(userId) && incoming().role == existing().role && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'preferredFontSize', 'preferredPlaybackRate', 'lastReadSurah', 'lastReadAyah', 'lastReadPage', 'updatedAt'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'role', 'preferredFontSize', 'preferredPlaybackRate', 'lastReadSurah', 'lastReadAyah', 'lastReadPage', 'updatedAt']))
+      );
+      allow delete: if isAdmin() && isValidId(userId);
+
+      // Isolated PII
+      match /private/info {
+        allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+        allow list: if false;
+        allow create: if isOwner(userId) && isValidId(userId) && isValidUserPrivateInfo(incoming()) && incoming().uid == userId && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidId(userId) && isValidUserPrivateInfo(incoming()) && incoming().uid == existing().uid && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+        allow delete: if isAdmin() && isValidId(userId);
+      }
+
+      // Favorites
+      match /favorites/{favId} {
+        allow get: if isValidId(userId) && isValidId(favId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(favId) && exists(/databases/$(database)/documents/users/$(userId)) && isValidFavorite(incoming()) && incoming().id == favId && incoming().userId == request.auth.uid && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(favId) && (isOwner(userId) || isAdmin());
+      }
+
+      // Listening History
+      match /history/{historyId} {
+        allow get: if isValidId(userId) && isValidId(historyId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(historyId) && exists(/databases/$(database)/documents/users/$(userId)) && isValidHistoryItem(incoming()) && incoming().id == historyId && incoming().userId == request.auth.uid && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(historyId) && isValidHistoryItem(incoming()) && incoming().id == existing().id && incoming().userId == existing().userId && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['progressSeconds', 'durationSeconds', 'audioUrl', 'style', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(historyId) && (isOwner(userId) || isAdmin());
+      }
+
+      // Personal Playlists
+      match /playlists/{playlistId} {
+        allow get: if isValidId(userId) && isValidId(playlistId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(playlistId) && exists(/databases/$(database)/documents/users/$(userId)) && isValidPlaylist(incoming()) && incoming().id == playlistId && incoming().userId == request.auth.uid && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(playlistId) && isValidPlaylist(incoming()) && incoming().id == existing().id && incoming().userId == existing().userId && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(playlistId) && (isOwner(userId) || isAdmin());
+
+        match /tracks/{trackId} {
+          allow get: if isValidId(userId) && isValidId(playlistId) && isValidId(trackId) && (isOwner(userId) || isAdmin());
+          allow list: if isOwner(userId) && resource.data.userId == request.auth.uid && resource.data.playlistId == playlistId;
+          allow create: if isOwner(userId) && isValidId(userId) && isValidId(playlistId) && isValidId(trackId) && exists(/databases/$(database)/documents/users/$(userId)/playlists/$(playlistId)) && isValidPlaylistTrack(incoming()) && incoming().id == trackId && incoming().userId == request.auth.uid && incoming().playlistId == playlistId && incoming().createdAt == request.time;
+          allow update: if false;
+          allow delete: if isValidId(userId) && isValidId(playlistId) && isValidId(trackId) && (isOwner(userId) || isAdmin());
+        }
+      }
+    }
+  }
+}

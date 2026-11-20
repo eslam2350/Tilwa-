@@ -1,0 +1,201 @@
+{
+  "entities": {
+    "Reciter": {
+      "title": "Reciter",
+      "description": "A canonical Quran reciter profile managed in TILAWA.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "nameAr": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "nameEn": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "titleAr": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "bioAr": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "birthYear": { "type": "string", "maxLength": 32 },
+        "deathYear": { "type": "string", "maxLength": 32 },
+        "originAr": { "type": "string", "maxLength": 120 },
+        "photoUrl": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "photoSource": { "type": "string", "maxLength": 300 },
+        "featured": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nameAr", "nameEn", "titleAr", "bioAr", "photoUrl", "featured", "updatedAt"]
+    },
+    "Recitation": {
+      "title": "Recitation",
+      "description": "An audio recitation record (Murattal, Mujawwad, or Radio Concert) for a reciter and surah.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 80, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reciterId": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "surahNumber": { "type": "integer" },
+        "surahNameAr": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "style": { "type": "string", "enum": ["مرتل", "مجود", "حفل إذاعي", "معلم"] },
+        "riwayah": { "type": "string", "maxLength": 80 },
+        "audioUrl": { "type": "string", "maxLength": 500 },
+        "durationLabel": { "type": "string", "maxLength": 32 },
+        "isAvailable": { "type": "boolean" },
+        "sourceName": { "type": "string", "maxLength": 160 },
+        "playsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "reciterId", "surahNumber", "surahNameAr", "style", "audioUrl", "isAvailable", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated listener preferences and reading progress without exposed PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "preferredFontSize": { "type": "integer" },
+        "preferredPlaybackRate": { "type": "number" },
+        "lastReadSurah": { "type": "integer" },
+        "lastReadAyah": { "type": "integer" },
+        "lastReadPage": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII document for user email.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "FavoriteItem": {
+      "title": "FavoriteItem",
+      "description": "A user's favorite recitation, reciter, or Quranic verse.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["recitation", "reciter", "ayah"] },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 240 },
+        "audioUrl": { "type": "string", "maxLength": 500 },
+        "reciterId": { "type": "string", "maxLength": 64 },
+        "surahNumber": { "type": "integer" },
+        "ayahNumber": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "type", "targetId", "title", "createdAt"]
+    },
+    "ListeningHistoryItem": {
+      "title": "ListeningHistoryItem",
+      "description": "Last listening progress record for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reciterId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "reciterName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "surahNumber": { "type": "integer" },
+        "surahName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "style": { "type": "string", "maxLength": 60 },
+        "audioUrl": { "type": "string", "maxLength": 500 },
+        "progressSeconds": { "type": "number" },
+        "durationSeconds": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "reciterId", "reciterName", "surahNumber", "surahName", "audioUrl", "progressSeconds", "updatedAt"]
+    },
+    "UserPlaylist": {
+      "title": "UserPlaylist",
+      "description": "Personal playlist created by a listener.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "name", "createdAt", "updatedAt"]
+    },
+    "PlaylistTrack": {
+      "title": "PlaylistTrack",
+      "description": "A track entry inside a user's personal playlist.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "playlistId": { "type": "string", "minLength": 2, "maxLength": 100, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reciterId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "reciterName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "surahNumber": { "type": "integer" },
+        "surahName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "style": { "type": "string", "maxLength": 60 },
+        "audioUrl": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "playlistId", "reciterId", "reciterName", "surahNumber", "surahName", "audioUrl", "createdAt"]
+    },
+    "AppDynamicConfig": {
+      "title": "AppDynamicConfig",
+      "description": "Central remote UI configuration for TILAWA web and Android APK OTA updates.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "version": { "type": "integer" },
+        "theme": { "type": "object", "description": "Dynamic color tokens map" },
+        "texts": { "type": "object", "description": "Editable interface headings, labels, and announcements" },
+        "images": { "type": "object", "description": "Remote hero and backdrop image URLs" },
+        "homeSections": { "type": "array", "description": "Ordered and toggleable home page sections" },
+        "navPages": { "type": "array", "description": "Ordered and toggleable navigation bar pages" },
+        "ota": { "type": "object", "description": "OTA bundle manifest endpoint and release notes" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "version", "theme", "texts", "images", "homeSections", "navPages", "ota", "updatedBy", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/reciters/{reciterId}": {
+      "schema": { "$ref": "#/entities/Reciter" },
+      "description": "Publicly readable catalog of Quran reciters, editable only by verified admins."
+    },
+    "/recitations/{recitationId}": {
+      "schema": { "$ref": "#/entities/Recitation" },
+      "description": "Publicly readable catalog of custom/curated audio recitations, editable only by verified admins."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile, reading position, and listener settings (isolated from PII)."
+    },
+    "/users/{userId}/private/info": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Private PII document containing user email."
+    },
+    "/users/{userId}/favorites/{favId}": {
+      "schema": { "$ref": "#/entities/FavoriteItem" },
+      "description": "User favorite recitations, reciters, and ayahs."
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": { "$ref": "#/entities/ListeningHistoryItem" },
+      "description": "User listening history and playback progress."
+    },
+    "/users/{userId}/playlists/{playlistId}": {
+      "schema": { "$ref": "#/entities/UserPlaylist" },
+      "description": "User personal playlists."
+    },
+    "/users/{userId}/playlists/{playlistId}/tracks/{trackId}": {
+      "schema": { "$ref": "#/entities/PlaylistTrack" },
+      "description": "Tracks inside a user personal playlist."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/AppDynamicConfig" },
+      "description": "Publicly readable remote theme, layout, texts, section order, and OTA update manifest; editable only by verified admins."
+    }
+  }
+}

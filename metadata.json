@@ -1,0 +1,6 @@
+{
+  "name": "TILAWA | تلاوة",
+  "description": "منصة قرآنية احترافية متكاملة للاستماع إلى تلاوات كبار القراء وقراءة المصحف الشريف بالرسم العثماني — عِش مع القرآن.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

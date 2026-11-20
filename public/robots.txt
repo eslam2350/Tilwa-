@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /#/admin
+
+Sitemap: https://phat-invention-llcf1.web.app/sitemap.xml
+Sitemap: https://ais-pre-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/sitemap.xml

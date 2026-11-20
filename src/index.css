@@ -1,0 +1,229 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-obsidian: #0A0D0C;
+    --bg-surface: #121715;
+    --bg-elevated: #171F1C;
+    --emerald-deep: #0E6B4D;
+    --emerald-soft: #178A64;
+    --gold-antique: #C8A253;
+    --gold-muted: #9E7E3C;
+    --text-primary: #F5F3EE;
+    --text-secondary: #A9B2AE;
+    --border-hairline: rgba(255, 255, 255, 0.08);
+    --border-gold: rgba(200, 162, 83, 0.22);
+  }
+
+  html {
+    font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+    scroll-behavior: smooth;
+    background-color: var(--bg-obsidian);
+    color: var(--text-primary);
+  }
+
+  body {
+    overflow-x: hidden;
+    letter-spacing: 0;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(14, 107, 77, 0.14), transparent 70%),
+      radial-gradient(circle at 12% 18%, rgba(200, 162, 83, 0.06), transparent 42%);
+    background-attachment: fixed;
+  }
+}
+
+@font-face {
+  font-family: 'UthmanicHafs';
+  src: url('/fonts/UthmanicHafs.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-display {
+  font-family: 'Amiri', 'IBM Plex Sans Arabic', serif;
+}
+
+.font-quran {
+  font-family: 'UthmanicHafs', 'Amiri Quran', 'Amiri', serif;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  word-spacing: normal;
+  letter-spacing: 0;
+}
+
+.font-mono-nums {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.glass-panel {
+  background: linear-gradient(180deg, rgba(20, 27, 24, 0.84), rgba(14, 19, 17, 0.90));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.glass-gold {
+  background: linear-gradient(155deg, rgba(22, 33, 28, 0.92), rgba(11, 15, 14, 0.96));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(200, 162, 83, 0.26);
+  box-shadow:
+    0 1px 0 0 rgba(200, 162, 83, 0.14) inset,
+    0 18px 40px -24px rgba(0, 0, 0, 0.75);
+}
+
+.sanctuary-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200, 162, 83, 0.35), transparent);
+}
+
+.mushaf-frame {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(14, 107, 77, 0.16), transparent 62%),
+    radial-gradient(circle at 50% 100%, rgba(200, 162, 83, 0.08), transparent 55%),
+    #101513;
+  border: 1px solid rgba(200, 162, 83, 0.28);
+  box-shadow:
+    inset 0 0 0 8px rgba(10, 13, 12, 0.88),
+    inset 0 0 0 9px rgba(200, 162, 83, 0.16);
+}
+
+.mushaf-paper-parchment {
+  background: radial-gradient(circle at 50% 0%, rgba(200, 162, 83, 0.14), transparent 65%), #F7F1E3;
+  border: 1px solid rgba(158, 126, 60, 0.45);
+  box-shadow: inset 0 0 0 6px rgba(247, 241, 227, 0.9), inset 0 0 0 7px rgba(158, 126, 60, 0.25);
+  color: #1B1915;
+}
+
+.mushaf-paper-emerald {
+  background: radial-gradient(circle at 50% 0%, rgba(23, 138, 100, 0.18), transparent 65%), #0B1914;
+  border: 1px solid rgba(23, 138, 100, 0.35);
+  box-shadow: inset 0 0 0 6px rgba(10, 21, 17, 0.9), inset 0 0 0 7px rgba(200, 162, 83, 0.16);
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0D0C;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #24302B;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C8A253;
+}
+
+/* Compositor-only live audio equalizer bars */
+@keyframes tilawa-eq {
+  0%, 100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: tilawa-eq 0.9s ease-in-out infinite;
+}
+
+.eq-bar-paused {
+  transform: scaleY(0.35);
+}
+
+.card-interactive {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px -14px rgba(0, 0, 0, 0.7);
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(200, 162, 83, 0.75);
+  outline-offset: 2px;
+}
+
+button, a {
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Dynamic Theme Engine — activated when Admin customizes palette via Remote Config */
+:root[data-dynamic-theme="custom"] body,
+:root[data-dynamic-theme="custom"] .bg-\[\#0A0D0C\],
+:root[data-dynamic-theme="custom"] .bg-\[\#0E1311\],
+:root[data-dynamic-theme="custom"] .bg-\[\#070908\] {
+  background-color: var(--bg-obsidian) !important;
+}
+
+:root[data-dynamic-theme="custom"] .bg-\[\#121715\],
+:root[data-dynamic-theme="custom"] .glass-panel {
+  background-color: color-mix(in srgb, var(--bg-surface) 88%, transparent) !important;
+}
+
+:root[data-dynamic-theme="custom"] .bg-\[\#171F1C\],
+:root[data-dynamic-theme="custom"] .glass-gold {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 92%, transparent), color-mix(in srgb, var(--bg-obsidian) 95%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--gold-antique) 28%, transparent) !important;
+}
+
+:root[data-dynamic-theme="custom"] .bg-\[\#0E6B4D\],
+:root[data-dynamic-theme="custom"] .hover\:bg-\[\#178A64\]:hover {
+  background-color: var(--emerald-deep) !important;
+}
+
+:root[data-dynamic-theme="custom"] .bg-\[\#178A64\] {
+  background-color: var(--emerald-soft) !important;
+}
+
+:root[data-dynamic-theme="custom"] .text-\[\#C8A253\] {
+  color: var(--gold-antique) !important;
+}
+
+:root[data-dynamic-theme="custom"] .bg-\[\#C8A253\] {
+  background-color: var(--gold-antique) !important;
+}
+
+:root[data-dynamic-theme="custom"] .border-\[\#C8A253\] {
+  border-color: var(--gold-antique) !important;
+}
+
+:root[data-dynamic-theme="custom"] .border-\[\#0E6B4D\] {
+  border-color: var(--emerald-deep) !important;
+}
+
+:root[data-dynamic-theme="custom"] .text-\[\#F5F3EE\] {
+  color: var(--text-primary) !important;
+}
+
+:root[data-dynamic-theme="custom"] .text-\[\#A9B2AE\] {
+  color: var(--text-secondary) !important;
+}
+

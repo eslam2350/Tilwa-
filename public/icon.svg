@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#142921" />
+      <stop offset="100%" stop-color="#0A0D0C" />
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5C57B" />
+      <stop offset="50%" stop-color="#C8A253" />
+      <stop offset="100%" stop-color="#9A7831" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)" />
+  <rect x="28" y="28" width="456" height="456" rx="88" fill="none" stroke="url(#gold)" stroke-width="4" stroke-opacity="0.45" />
+  <!-- Geometric 8-point Islamic Star Frame -->
+  <g transform="translate(256 256)" fill="none" stroke="url(#gold)" stroke-width="8" stroke-linejoin="round">
+    <rect x="-112" y="-112" width="224" height="224" rx="18" />
+    <rect x="-112" y="-112" width="224" height="224" rx="18" transform="rotate(45)" />
+  </g>
+  <!-- Center Emerald Seal & Open Mushaf Glyph -->
+  <circle cx="256" cy="256" r="88" fill="#0E6B4D" stroke="url(#gold)" stroke-width="5" />
+  <path d="M198 228c22-10 42-6 58 10 16-16 36-20 58-10v64c-22-10-42-6-58 10-16-16-36-20-58-10v-64z" fill="none" stroke="#F5F3EE" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+  <line x1="256" y1="238" x2="256" y2="302" stroke="url(#gold)" stroke-width="6" stroke-linecap="round" />
+</svg>
