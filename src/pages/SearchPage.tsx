@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Heart, Play, Search, User } from 'lucide-react';
+import { ReciterImage } from '../components/ReciterImage';
 import { QURAN_META } from '../data/reciters';
 import { useAppData } from '../contexts/AppDataContext';
 import { useAudioPlayer } from '../contexts/AudioPlayerContext';
@@ -189,11 +190,10 @@ export const SearchPage: React.FC<SearchPageProps> = ({ initialQuery = '', navig
                       className="glass-panel card-interactive rounded-2xl p-4 flex items-center justify-between gap-4"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <img
+                        <ReciterImage
                           src={r.photoUrl}
                           alt={r.nameAr}
                           loading="lazy"
-                          referrerPolicy="no-referrer"
                           className="w-14 h-14 rounded-xl object-cover object-top shrink-0"
                         />
                         <div className="min-w-0">
@@ -342,7 +342,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ initialQuery = '', navig
                                 targetId: favKey,
                                 title: cleanName,
                                 subtitle: `${defaultRec.nameAr} · ${col.style}`,
-                                audioUrl: buildSurahAudioUrl(col.server, s.number),
+                                audioUrl: buildSurahAudioUrl(col.server, s.number, col.surahUrls),
                                 reciterId: defaultRec.id,
                                 surahNumber: s.number,
                               })

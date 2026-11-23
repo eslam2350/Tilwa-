@@ -21,8 +21,9 @@ import {
   X,
 } from 'lucide-react';
 import { useAppData } from '../contexts/AppDataContext';
-import { useAudioPlayer } from '../contexts/AudioPlayerContext';
+import { useAudioPlayer, useAudioProgress } from '../contexts/AudioPlayerContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useDynamicConfig } from '../contexts/DynamicConfigContext';
 import type { SleepTimerOption } from '../types/tilawa';
 import { formatTimeSeconds, toArabicDigits } from '../utils/quranHelpers';
 import { AudioWaveBars } from './AudioWaveBars';
@@ -38,20 +39,79 @@ const SLEEP_OPTIONS: Array<{ value: SleepTimerOption; label: string }> = [
   { value: 30, label: '٣٠ دقيقة' },
   { value: 45, label: '٤٥ دقيقة' },
   { value: 60, label: '٦٠ دقيقة' },
-  { value: -1, label: 'بنهاية السورة' },
+  { value: -1, label: 'بنهاية المقطع الحالي' },
 ];
+
+const MiniTopProgressBar: React.FC = () => {
+  const { currentTime, duration } = useAudioProgress();
+  const progressPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  return (
+    <div className="h-1 w-full bg-white/10 relative overflow-hidden">
+      <div
+        className="h-full bg-[#C8A253] transition-[width] duration-150"
+        style={{ width: `${progressPct}%` }}
+      />
+    </div>
+  );
+};
+
+const DesktopScrubberBar: React.FC<{ seekTo: (seconds: number) => void }> = ({ seekTo }) => {
+  const { currentTime, duration } = useAudioProgress();
+  return (
+    <div dir="ltr" className="hidden lg:flex items-center gap-2.5 w-full">
+      <span className="text-[11px] font-mono-nums text-[#A9B2AE] w-11 text-right">
+        {formatTimeSeconds(currentTime)}
+      </span>
+      <input
+        type="range"
+        aria-label="شريط التقدم الصوتي"
+        min={0}
+        max={duration || 100}
+        value={currentTime}
+        onChange={(e) => seekTo(Number(e.target.value))}
+        className="w-full accent-[#C8A253] cursor-pointer h-1.5"
+      />
+      <span className="text-[11px] font-mono-nums text-[#A9B2AE] w-11 text-left">
+        {formatTimeSeconds(duration)}
+      </span>
+    </div>
+  );
+};
+
+const ExpandedTimelineScrubber: React.FC<{ seekTo: (seconds: number) => void }> = ({ seekTo }) => {
+  const { currentTime, duration } = useAudioProgress();
+  return (
+    <div dir="ltr" className="space-y-2">
+      <input
+        type="range"
+        aria-label="تحديد موضع التلاوة"
+        min={0}
+        max={duration || 100}
+        value={currentTime}
+        onChange={(e) => seekTo(Number(e.target.value))}
+        className="w-full accent-[#C8A253] cursor-pointer h-2"
+      />
+      <div className="flex items-center justify-between text-xs font-mono-nums text-[#A9B2AE]">
+        <span>{formatTimeSeconds(currentTime)}</span>
+        <span>{formatTimeSeconds(duration)}</span>
+      </div>
+    </div>
+  );
+};
 
 export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistClick }) => {
   const { reciters } = useAppData();
   const { isFavorite, toggleFavorite } = useAuth();
+  const { config } = useDynamicConfig();
+  const showWaveform = config.audioPlayer?.showWaveform !== false;
+  const enableSleepTimer = config.audioPlayer?.enableSleepTimer !== false;
+  const enableSegmentLoop = config.audioPlayer?.enableSegmentLoop !== false;
   const {
     currentTrack,
     queue,
     isPlaying,
     isBuffering,
     audioError,
-    currentTime,
-    duration,
     volume,
     isMuted,
     playbackRate,
@@ -116,7 +176,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
 
   if (!currentTrack) return null;
 
-  const progressPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const favKey = `rec_${currentTrack.reciterId}_${currentTrack.surahNumber}`;
   const favored = isFavorite(favKey);
 
@@ -152,15 +211,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
       <div
         role="region"
         aria-label="مشغل التلاوة الصوتي"
-        className="fixed bottom-14 md:bottom-0 inset-x-0 z-40 glass-gold border-t border-[#C8A253]/30 shadow-2xl"
+        className="fixed bottom-14 md:bottom-0 inset-x-0 z-40 glass-gold glass-bar border-t border-[#C8A253]/30 shadow-2xl"
       >
-        {/* Top thin progress indicator */}
-        <div className="h-1 w-full bg-white/10 relative overflow-hidden">
-          <div
-            className="h-full bg-[#C8A253] transition-[width] duration-150"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
+        <MiniTopProgressBar />
 
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 flex items-center justify-between gap-3">
           {/* Left Zone: Reciter Art, Surah Info & Like */}
@@ -172,7 +225,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
                 loading="eager"
                 className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-cover border border-[#C8A253]/35"
               />
-              {isPlaying && (
+              {isPlaying && showWaveform && (
                 <span className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-[#0A0D0C] border border-[#C8A253]/50 flex items-center justify-center text-[#C8A253]">
                   <AudioWaveBars active className="h-2.5" />
                 </span>
@@ -295,24 +348,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
               </button>
             </div>
 
-            {/* Desktop Scrubber Row */}
-            <div dir="ltr" className="hidden lg:flex items-center gap-2.5 w-full">
-              <span className="text-[11px] font-mono-nums text-[#A9B2AE] w-11 text-right">
-                {formatTimeSeconds(currentTime)}
-              </span>
-              <input
-                type="range"
-                aria-label="شريط التقدم الصوتي"
-                min={0}
-                max={duration || 100}
-                value={currentTime}
-                onChange={(e) => seekTo(Number(e.target.value))}
-                className="w-full accent-[#C8A253] cursor-pointer h-1.5"
-              />
-              <span className="text-[11px] font-mono-nums text-[#A9B2AE] w-11 text-left">
-                {formatTimeSeconds(duration)}
-              </span>
-            </div>
+            <DesktopScrubberBar seekTo={seekTo} />
           </div>
 
           {/* Right Zone: Queue Drawer Toggle, Desktop Volume, Expand Studio */}
@@ -460,7 +496,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
           <div className="w-full md:max-w-3xl max-h-[92vh] overflow-y-auto glass-gold rounded-t-3xl md:rounded-3xl p-5 sm:p-8 space-y-6">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                {isPlaying && <AudioWaveBars active className="text-[#C8A253]" />}
+                {isPlaying && showWaveform && <AudioWaveBars active className="text-[#C8A253]" />}
                 <div className="space-y-1">
                   <p className="text-xs text-[#C8A253]">المشغل الصوتي المتقدم</p>
                   <h2 className="text-xl font-display font-bold text-[#F5F3EE] leading-snug">
@@ -478,7 +514,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
               </button>
             </div>
 
-            {/* Reciter Header + Switch Reciter */}
+            {/* Reciter / Preacher Header + Conditional Reciter Switcher */}
             <div className="flex flex-col sm:flex-row items-center gap-5">
               <ReciterImage
                 src={currentTrack.reciterPhoto}
@@ -493,26 +529,50 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
                   {currentTrack.sourceName ? ` · ${currentTrack.sourceName}` : ''}
                 </p>
 
-                <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                  <label htmlFor="player-reciter-select" className="text-xs text-[#A9B2AE]">
-                    تبديل القارئ لهذه السورة:
-                  </label>
-                  <select
-                    id="player-reciter-select"
-                    value={currentTrack.reciterId}
-                    onChange={(e) => {
-                      const nextReciter = reciters.find((r) => r.id === e.target.value);
-                      if (nextReciter) switchCurrentReciter(nextReciter);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-[#0A0D0C] border border-white/15 text-xs text-[#F5F3EE]"
-                  >
-                    {reciters.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.nameAr}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {currentTrack.kind !== 'podcast' ? (
+                  <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <label htmlFor="player-reciter-select" className="text-xs text-[#A9B2AE]">
+                      تبديل القارئ لهذه السورة:
+                    </label>
+                    <select
+                      id="player-reciter-select"
+                      value={currentTrack.reciterId}
+                      onChange={(e) => {
+                        const nextReciter = reciters.find((r) => r.id === e.target.value);
+                        if (nextReciter) switchCurrentReciter(nextReciter);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#0A0D0C] border border-white/15 text-xs text-[#F5F3EE]"
+                    >
+                      {reciters.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.nameAr}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-[#C8A253]">
+                    <span>بودكاست بصيرة الصوتي</span>
+                    {currentTrack.publishedAt && (
+                      <>
+                        <span>·</span>
+                        <span className="text-[#A9B2AE]">{currentTrack.publishedAt}</span>
+                      </>
+                    )}
+                    {currentTrack.episodeId && (
+                      <>
+                        <span>·</span>
+                        <a
+                          href={`#/basira/episodes/${currentTrack.episodeId}`}
+                          onClick={() => setIsExpanded(false)}
+                          className="underline hover:text-[#F5F3EE]"
+                        >
+                          صفحة الحلقة والتفاصيل
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -522,22 +582,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
               </div>
             )}
 
-            {/* Interactive Timeline */}
-            <div dir="ltr" className="space-y-2">
-              <input
-                type="range"
-                aria-label="تحديد موضع التلاوة"
-                min={0}
-                max={duration || 100}
-                value={currentTime}
-                onChange={(e) => seekTo(Number(e.target.value))}
-                className="w-full accent-[#C8A253] cursor-pointer h-2"
-              />
-              <div className="flex items-center justify-between text-xs font-mono-nums text-[#A9B2AE]">
-                <span>{formatTimeSeconds(currentTime)}</span>
-                <span>{formatTimeSeconds(duration)}</span>
-              </div>
-            </div>
+            <ExpandedTimelineScrubber seekTo={seekTo} />
 
             {/* Spotify Full Transport Row */}
             <div dir="ltr" className="flex items-center justify-center gap-2 sm:gap-4">
@@ -633,14 +678,14 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-[#A9B2AE]">سرعة التلاوة:</span>
-                  <div className="flex items-center gap-1">
-                    {[0.75, 1, 1.25, 1.5].map((rate) => (
+                  <span className="text-xs text-[#A9B2AE]">سرعة التشغيل:</span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
                       <button
                         key={rate}
                         type="button"
                         onClick={() => setPlaybackRate(rate)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono-nums cursor-pointer ${
+                        className={`px-2 py-1 rounded-lg text-xs font-mono-nums cursor-pointer ${
                           playbackRate === rate
                             ? 'bg-[#0E6B4D] text-white'
                             : 'bg-white/5 text-[#A9B2AE] hover:text-white'
@@ -655,26 +700,28 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
 
               {/* Repeat Mode, Sleep Timer & A-B Loop */}
               <div className="space-y-3 bg-[#0A0D0C]/70 rounded-2xl p-4 border border-white/5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs text-[#A9B2AE]">
-                    <Moon className="w-3.5 h-3.5 text-[#C8A253]" />
-                    <span>مؤقت النوم:</span>
+                {enableSleepTimer && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs text-[#A9B2AE]">
+                      <Moon className="w-3.5 h-3.5 text-[#C8A253]" />
+                      <span>مؤقت النوم:</span>
+                    </div>
+                    <select
+                      aria-label="اختيار مؤقت النوم"
+                      value={sleepTimerOption}
+                      onChange={(e) => setSleepTimer(Number(e.target.value) as SleepTimerOption)}
+                      className="px-2.5 py-1 rounded-lg bg-[#121715] border border-white/15 text-xs text-[#F5F3EE]"
+                    >
+                      {SLEEP_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    aria-label="اختيار مؤقت النوم"
-                    value={sleepTimerOption}
-                    onChange={(e) => setSleepTimer(Number(e.target.value) as SleepTimerOption)}
-                    className="px-2.5 py-1 rounded-lg bg-[#121715] border border-white/15 text-xs text-[#F5F3EE]"
-                  >
-                    {SLEEP_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                )}
 
-                {sleepTimerOption !== 0 && (
+                {enableSleepTimer && sleepTimerOption !== 0 && (
                   <p className="text-[11px] text-[#C8A253]">
                     {sleepTimerOption === -1
                       ? 'سيتوقف التشغيل تلقائيًا عند انتهاء السورة الحالية'
@@ -682,32 +729,34 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
                   </p>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-[#A9B2AE]">تكرار مقطع (أ-ب):</span>
-                  <button
-                    type="button"
-                    onClick={setLoopStart}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-[#F5F3EE] cursor-pointer"
-                  >
-                    أ{segmentLoop.start !== null ? ` ${formatTimeSeconds(segmentLoop.start)}` : ''}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={setLoopEnd}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-[#F5F3EE] cursor-pointer"
-                  >
-                    ب{segmentLoop.end !== null ? ` ${formatTimeSeconds(segmentLoop.end)}` : ''}
-                  </button>
-                  {segmentLoop.active && (
+                {enableSegmentLoop && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-[#A9B2AE]">تكرار مقطع (أ-ب):</span>
                     <button
                       type="button"
-                      onClick={clearSegmentLoop}
-                      className="px-2.5 py-1 rounded-lg bg-rose-900/50 text-xs text-rose-200 cursor-pointer"
+                      onClick={setLoopStart}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-[#F5F3EE] cursor-pointer"
                     >
-                      إلغاء
+                      أ{segmentLoop.start !== null ? ` ${formatTimeSeconds(segmentLoop.start)}` : ''}
                     </button>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={setLoopEnd}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-[#F5F3EE] cursor-pointer"
+                    >
+                      ب{segmentLoop.end !== null ? ` ${formatTimeSeconds(segmentLoop.end)}` : ''}
+                    </button>
+                    {segmentLoop.active && (
+                      <button
+                        type="button"
+                        onClick={clearSegmentLoop}
+                        className="px-2.5 py-1 rounded-lg bg-rose-900/50 text-xs text-rose-200 cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between pt-1">
                   <button
@@ -756,7 +805,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({ onAddToPlaylistC
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0E6B4D]/30 hover:bg-[#0E6B4D]/50 border border-[#0E6B4D] text-xs text-[#F5F3EE] cursor-pointer"
                   >
                     <Download className="w-4 h-4 text-[#C8A253]" />
-                    <span>تنزيل التلاوة (MP3)</span>
+                    <span>{currentTrack.kind === 'podcast' ? 'تنزيل الحلقة (MP3)' : 'تنزيل التلاوة (MP3)'}</span>
                   </a>
                 )}
               </div>

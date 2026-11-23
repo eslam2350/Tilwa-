@@ -79,13 +79,35 @@ async function run() {
     }
   }
 
-  // Inline reciter portraits & hero image into JS bundle so standalone index.html works 100% offline via file://
+  // Inline reciter portraits, basira covers & hero image into JS bundle so standalone index.html works 100% offline via file://
   const recitersImgDir = path.join(publicDir, 'images/reciters');
   if (fs.existsSync(recitersImgDir)) {
     for (const file of fs.readdirSync(recitersImgDir)) {
       const fullPath = path.join(recitersImgDir, file);
       if (fs.statSync(fullPath).isFile()) {
         const webPath = `/images/reciters/${file}`;
+        combinedJs = combinedJs.split(webPath).join(toDataUri(fullPath));
+      }
+    }
+  }
+
+  const basiraImgDir = path.join(publicDir, 'images/basira');
+  if (fs.existsSync(basiraImgDir)) {
+    for (const file of fs.readdirSync(basiraImgDir)) {
+      const fullPath = path.join(basiraImgDir, file);
+      if (fs.statSync(fullPath).isFile()) {
+        const webPath = `/images/basira/${file}`;
+        combinedJs = combinedJs.split(webPath).join(toDataUri(fullPath));
+      }
+    }
+  }
+
+  const publicRootImagesDir = path.join(publicDir, 'images');
+  if (fs.existsSync(publicRootImagesDir)) {
+    for (const file of fs.readdirSync(publicRootImagesDir)) {
+      const fullPath = path.join(publicRootImagesDir, file);
+      if (fs.statSync(fullPath).isFile()) {
+        const webPath = `/images/${file}`;
         combinedJs = combinedJs.split(webPath).join(toDataUri(fullPath));
       }
     }

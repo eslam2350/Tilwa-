@@ -10,6 +10,7 @@ import {
   formatTimeSeconds,
   getDefaultPlayableSurahNumber,
   getNextSurahNumber,
+  isBlockedReciter,
   isSurahAvailableInCollection,
   normalizeArabic,
   sanitizeFirestoreId,
@@ -194,5 +195,36 @@ test('formatSurahDisplayName cleans Uthmani marks into clear Arabic surah names'
   assert.equal(formatSurahDisplayName('سُورَةُ المَائـِدَةِ'), 'سورة المائدة');
   assert.equal(formatSurahDisplayName('سُورَةُ سَبَإٍ'), 'سورة سبأ');
   assert.equal(formatSurahDisplayName('سُورَةُ النَّبَإِ'), 'سورة النبأ');
+});
+
+test('isBlockedReciter catches removed Sheikh Omar bin Diaa El-Din variants', () => {
+  assert.equal(
+    isBlockedReciter({ id: 'omar-diaa', nameAr: 'الشيخ عمر بن ضياء الدين', nameEn: 'Omar' }),
+    true
+  );
+  assert.equal(isBlockedReciter('الشيخ عمر بن ضياء الدين'), true);
+  assert.equal(isBlockedReciter({ id: 'minshawi', nameAr: 'الشيخ محمد صديق المنشاوي' }), false);
+  assert.equal(isBlockedReciter({ id: 'kamel-bahtimi', nameAr: 'الشيخ كامل يوسف البهتيمي' }), false);
+});
+
+test('buildSurahAudioUrl and isSurahAvailableInCollection support per-surah surahUrls', () => {
+  const col = {
+    id: 'bahtimi-archive',
+    style: 'مجود' as const,
+    riwayah: 'حفص عن عاصم',
+    server: 'https://archive.org/download/',
+    surahTotal: 2,
+    surahUrls: {
+      2: 'https://archive.org/download/kamel-yousef-al-bahtimi/002.mp3',
+      19: 'https://archive.org/download/kamel-yousef-al-bahtimi/019.mp3',
+    },
+    sourceName: 'Archive.org',
+  };
+  assert.equal(isSurahAvailableInCollection(col, 2), true);
+  assert.equal(isSurahAvailableInCollection(col, 1), false);
+  assert.equal(
+    buildSurahAudioUrl(col.server, 19, col.surahUrls),
+    'https://archive.org/download/kamel-yousef-al-bahtimi/019.mp3'
+  );
 });
 

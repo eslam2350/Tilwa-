@@ -50,11 +50,58 @@ export function toArabicDigits(num: number): string {
     .join('');
 }
 
+const BLOCKED_RECITER_KEYWORDS_AR = [
+  'عمر بن ضياء',
+  'عمر ضياء الدين',
+  'بن ضياء الدين',
+  'ضياء الدين',
+];
+
+const BLOCKED_RECITER_KEYWORDS_EN = [
+  'omar-diaa',
+  'omar diaa',
+  'omar bin diaa',
+  'diaa eldin',
+  'diaa aldin',
+  'diyaa',
+];
+
 /**
- * Builds the canonical MP3 URL for a surah from a base server URL.
+ * Globally excludes removed/blocked reciters from appearing anywhere in the app,
+ * including localStorage history/favorites, cached PWA bundles, or uncleaned Firestore docs.
  */
-export function buildSurahAudioUrl(serverBase: string, surahNumber: number): string {
-  if (!serverBase || surahNumber < 1 || surahNumber > 114) return '';
+export function isBlockedReciter(
+  input: { id?: string; nameAr?: string; nameEn?: string; titleAr?: string } | string | null | undefined
+): boolean {
+  if (!input) return false;
+  if (typeof input === 'string') {
+    const normAr = normalizeArabic(input);
+    const lower = input.toLowerCase();
+    return (
+      BLOCKED_RECITER_KEYWORDS_AR.some((k) => normAr.includes(normalizeArabic(k))) ||
+      BLOCKED_RECITER_KEYWORDS_EN.some((k) => lower.includes(k))
+    );
+  }
+  const combinedAr = normalizeArabic(`${input.nameAr || ''} ${input.titleAr || ''}`);
+  const combinedEn = `${input.id || ''} ${input.nameEn || ''}`.toLowerCase();
+  return (
+    BLOCKED_RECITER_KEYWORDS_AR.some((k) => combinedAr.includes(normalizeArabic(k))) ||
+    BLOCKED_RECITER_KEYWORDS_EN.some((k) => combinedEn.includes(k))
+  );
+}
+
+/**
+ * Builds the canonical MP3 URL for a surah from a base server URL or custom per-surah URL map.
+ */
+export function buildSurahAudioUrl(
+  serverBase: string,
+  surahNumber: number,
+  surahUrls?: Record<number, string>
+): string {
+  if (surahNumber < 1 || surahNumber > 114) return '';
+  const custom = surahUrls?.[surahNumber];
+  if (custom) return custom;
+  if (!serverBase) return '';
   const cleanBase = serverBase.endsWith('/') ? serverBase : `${serverBase}/`;
   const padded = String(surahNumber).padStart(3, '0');
   return `${cleanBase}${padded}.mp3`;
@@ -68,10 +115,13 @@ export function isSurahAvailableInCollection(
   surahNumber: number
 ): boolean {
   if (surahNumber < 1 || surahNumber > 114) return false;
-  if (!collection.server) return false;
   if (collection.missingSurahs && collection.missingSurahs.includes(surahNumber)) {
     return false;
   }
+  if (collection.surahUrls) {
+    return Boolean(collection.surahUrls[surahNumber]);
+  }
+  if (!collection.server) return false;
   return true;
 }
 
@@ -179,7 +229,7 @@ export function buildCollectionTracks(
       surahName: formatSurahDisplayName(s.name),
       style: collection.style,
       riwayah: collection.riwayah,
-      audioUrl: buildSurahAudioUrl(collection.server, s.number),
+      audioUrl: buildSurahAudioUrl(collection.server, s.number, collection.surahUrls),
       isAvailable: true,
       sourceName: collection.sourceName,
     }));

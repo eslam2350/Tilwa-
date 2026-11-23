@@ -57,6 +57,8 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
   const [surahFilter, setSurahFilter] = useState('');
   const [availabilityFilter, setAvailabilityFilter] = useState<'available' | 'all'>('available');
+  const [revelationFilter, setRevelationFilter] = useState<'all' | 'Meccan' | 'Medinan'>('all');
+  const [rangeFilter, setRangeFilter] = useState<'all' | '1-30' | '31-70' | '71-114'>('all');
   const [quickSurahNum, setQuickSurahNum] = useState<number>(1);
 
   useEffect(() => {
@@ -64,6 +66,8 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
     setSelectedCollectionId('');
     setSurahFilter('');
     setAvailabilityFilter('available');
+    setRevelationFilter('all');
+    setRangeFilter('all');
   }, [reciterId]);
 
   const availableCollections = useMemo(() => {
@@ -110,10 +114,22 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
 
   const filteredSurahs = useMemo(() => {
     const q = normalizeArabic(surahFilter);
-    const base =
+    let base =
       availabilityFilter === 'available' && activeCollection
         ? QURAN_META.surahs.filter((s) => isSurahAvailableInCollection(activeCollection, s.number))
         : QURAN_META.surahs;
+
+    if (revelationFilter !== 'all') {
+      base = base.filter((s) => s.revelationType === revelationFilter);
+    }
+    if (rangeFilter === '1-30') {
+      base = base.filter((s) => s.number >= 1 && s.number <= 30);
+    } else if (rangeFilter === '31-70') {
+      base = base.filter((s) => s.number >= 31 && s.number <= 70);
+    } else if (rangeFilter === '71-114') {
+      base = base.filter((s) => s.number >= 71 && s.number <= 114);
+    }
+
     if (!q) return base;
     return base.filter(
       (s) =>
@@ -122,7 +138,7 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
         s.englishName.toLowerCase().includes(q) ||
         String(s.number) === q
     );
-  }, [surahFilter, availabilityFilter, activeCollection]);
+  }, [surahFilter, availabilityFilter, revelationFilter, rangeFilter, activeCollection]);
 
   if (!reciter) {
     return (
@@ -157,7 +173,9 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
       surahName: cleanSurahName,
       style: activeCollection.style,
       riwayah: activeCollection.riwayah,
-      audioUrl: available ? buildSurahAudioUrl(activeCollection.server, surahNumber) : '',
+      audioUrl: available
+        ? buildSurahAudioUrl(activeCollection.server, surahNumber, activeCollection.surahUrls)
+        : '',
       isAvailable: available,
       unavailableReason: available
         ? undefined
@@ -258,6 +276,28 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
                 <Heart className={`w-4 h-4 ${isReciterFav ? 'fill-current' : ''}`} />
                 <span>{isReciterFav ? 'في القراء المفضلين' : 'حفظ في القراء المفضلين'}</span>
               </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div className="rounded-xl bg-[#0A0D0C]/55 border border-white/10 px-3.5 py-2.5">
+              <p className="text-[11px] text-[#A9B2AE]">المدرسة القرآنية</p>
+              <p className="text-xs sm:text-sm font-semibold text-[#F5F3EE] truncate">
+                {reciter.schoolAr || 'مدرسة التلاوة الأصيلة'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-[#0A0D0C]/55 border border-white/10 px-3.5 py-2.5">
+              <p className="text-[11px] text-[#A9B2AE]">المصاحف والتسجيلات</p>
+              <p className="text-xs sm:text-sm font-semibold text-[#C8A253]">
+                {toArabicDigits(reciter.collections.length)}{' '}
+                {reciter.collections.length === 1 ? 'مصحف' : 'مصاحف'}
+              </p>
+            </div>
+            <div className="col-span-2 sm:col-span-1 rounded-xl bg-[#0A0D0C]/55 border border-white/10 px-3.5 py-2.5">
+              <p className="text-[11px] text-[#A9B2AE]">السور المتاحة حاليًا</p>
+              <p className="text-xs sm:text-sm font-semibold text-[#F5F3EE]">
+                {toArabicDigits(availableSurahsInActive.length)} سورة
+              </p>
             </div>
           </div>
 
@@ -424,7 +464,7 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
                       : 'text-[#A9B2AE] hover:text-white'
                   }`}
                 >
-                  المتاحة فقط ({toArabicDigits(availableSurahsInActive.length)})
+                  المتاحة فقط (<span className="font-mono-nums">{toArabicDigits(availableSurahsInActive.length)}</span>)
                 </button>
                 <button
                   type="button"
@@ -440,7 +480,54 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
               </div>
             )}
 
-            <div className="relative w-full sm:w-64">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#121715] border border-white/10">
+              {(
+                [
+                  { id: 'all', label: 'الكل' },
+                  { id: 'Meccan', label: 'مكية' },
+                  { id: 'Medinan', label: 'مدنية' },
+                ] as const
+              ).map((rev) => (
+                <button
+                  key={rev.id}
+                  type="button"
+                  onClick={() => setRevelationFilter(rev.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                    revelationFilter === rev.id
+                      ? 'bg-[#C8A253] text-[#0A0D0C] font-bold'
+                      : 'text-[#A9B2AE] hover:text-white'
+                  }`}
+                >
+                  {rev.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#121715] border border-white/10">
+              {(
+                [
+                  { id: 'all', label: '١–١١٤' },
+                  { id: '1-30', label: '١–٣٠' },
+                  { id: '31-70', label: '٣١–٧٠' },
+                  { id: '71-114', label: '٧١–١١٤' },
+                ] as const
+              ).map((rng) => (
+                <button
+                  key={rng.id}
+                  type="button"
+                  onClick={() => setRangeFilter(rng.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-nums cursor-pointer transition-colors ${
+                    rangeFilter === rng.id
+                      ? 'bg-[#0E6B4D] text-white'
+                      : 'text-[#A9B2AE] hover:text-white'
+                  }`}
+                >
+                  {rng.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-56">
               <Search className="w-4 h-4 text-[#A9B2AE] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
@@ -448,7 +535,7 @@ export const ReciterProfilePage: React.FC<ReciterProfilePageProps> = ({
                 onChange={(e) => setSurahFilter(e.target.value)}
                 placeholder="ابحث باسم السورة أو رقمها..."
                 aria-label="تصفية السور"
-                className="w-full pr-10 pl-4 py-2.5 rounded-xl bg-[#121715] border border-white/10 text-sm text-[#F5F3EE] placeholder:text-[#A9B2AE]/60 focus:outline-none focus:border-[#C8A253]"
+                className="w-full pr-10 pl-4 py-2 rounded-xl bg-[#121715] border border-white/10 text-sm text-[#F5F3EE] placeholder:text-[#A9B2AE]/60 focus:outline-none focus:border-[#C8A253]"
               />
             </div>
           </div>

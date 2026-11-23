@@ -34,12 +34,18 @@ public class MainActivity extends Activity {
     private static final String KEY_CACHED_VERSION = "cached_version";
     private static final String KEY_CACHED_SHA = "cached_sha256";
     private static final String KEY_PENDING_VERSION = "pending_version";
-    private static final String DEFAULT_MANIFEST_URL =
-            "https://ais-pre-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/downloads/ota-manifest.json";
+    private static final String KEY_SERVER_ORIGIN = "server_origin";
+    private static final String APP_VERSION_NAME = "2.0.0";
+    private static final String[] MANIFEST_URLS = new String[] {
+            "https://ais-pre-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/downloads/ota-manifest.json",
+            "https://ais-dev-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/downloads/ota-manifest.json",
+            "https://phat-invention-llcf1.web.app/downloads/ota-manifest.json"
+    };
 
     private WebView webView;
     private volatile boolean isCheckingOta = false;
     private volatile boolean otaUpdateReady = false;
+    private volatile long lastCheckTimestampMs = 0L;
     private boolean autoCheckTriggered = false;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -76,6 +82,21 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new TilawaJsBridge(), "TilawaAndroid");
         webView.setWebChromeClient(new WebChromeClient());
+        webView.setDownloadListener(new android.webkit.DownloadListener() {
+            @Override
+            public void onDownloadStart(
+                    String url,
+                    String userAgent,
+                    String contentDisposition,
+                    String mimetype,
+                    long contentLength
+            ) {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception ignored) {
+                }
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -103,15 +124,23 @@ public class MainActivity extends Activity {
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {
-                            startBackgroundOtaCheck(DEFAULT_MANIFEST_URL);
+                            startBackgroundOtaCheck(null);
                         }
-                    }, 2500);
+                    }, 900);
                 }
             }
         });
 
         setContentView(webView);
         loadActiveBundle();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (autoCheckTriggered && (System.currentTimeMillis() - lastCheckTimestampMs) > 15000L) {
+            startBackgroundOtaCheck(null);
+        }
     }
 
     private File getOtaCacheDir() {
@@ -156,25 +185,57 @@ public class MainActivity extends Activity {
     private void startBackgroundOtaCheck(final String customManifestUrl) {
         if (isCheckingOta) return;
         isCheckingOta = true;
+        lastCheckTimestampMs = System.currentTimeMillis();
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    String targetManifest = (customManifestUrl != null && customManifestUrl.startsWith("http"))
-                            ? customManifestUrl
-                            : DEFAULT_MANIFEST_URL;
+                    String manifestRaw = null;
+                    String activeManifestOrigin = null;
 
-                    String manifestRaw = fetchUrlString(targetManifest);
+                    if (customManifestUrl != null && customManifestUrl.startsWith("http")) {
+                        manifestRaw = fetchUrlString(appendCacheBust(customManifestUrl));
+                        if (manifestRaw != null && !manifestRaw.isEmpty()) {
+                            activeManifestOrigin = customManifestUrl;
+                        }
+                    }
+
+                    if (manifestRaw == null || manifestRaw.isEmpty()) {
+                        for (String candidateUrl : MANIFEST_URLS) {
+                            String fetched = fetchUrlString(appendCacheBust(candidateUrl));
+                            if (fetched != null && !fetched.isEmpty()) {
+                                manifestRaw = fetched;
+                                activeManifestOrigin = candidateUrl;
+                                break;
+                            }
+                        }
+                    }
+
                     if (manifestRaw == null || manifestRaw.isEmpty()) {
                         notifyOtaStatus();
                         return;
+                    }
+
+                    if (activeManifestOrigin != null) {
+                        try {
+                            Uri parsedOrigin = Uri.parse(activeManifestOrigin);
+                            String originStr = parsedOrigin.getScheme() + "://" + parsedOrigin.getAuthority();
+                            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                                    .edit()
+                                    .putString(KEY_SERVER_ORIGIN, originStr)
+                                    .apply();
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     JSONObject manifest = new JSONObject(manifestRaw);
                     String remoteVersion = manifest.optString("version", "");
                     String remoteSha = manifest.optString("sha256", "");
                     String bundleUrl = manifest.optString("bundleUrl", "");
+                    if (bundleUrl.isEmpty() && activeManifestOrigin != null) {
+                        bundleUrl = activeManifestOrigin.replace("ota-manifest.json", "index.html");
+                    }
                     if (bundleUrl.isEmpty() || remoteSha.isEmpty()) {
                         notifyOtaStatus();
                         return;
@@ -192,7 +253,14 @@ public class MainActivity extends Activity {
 
                     // Download new bundle to temp file & verify SHA-256 + HTML markers
                     File tmpFile = new File(getOtaCacheDir(), "index.html.tmp");
-                    String downloadedSha = downloadFileWithSha256(bundleUrl, tmpFile);
+                    String downloadedSha = downloadFileWithSha256(appendCacheBust(bundleUrl), tmpFile);
+                    if ((downloadedSha == null || !downloadedSha.equalsIgnoreCase(remoteSha)) && activeManifestOrigin != null) {
+                        // Retry directly against the active manifest's origin in case bundleUrl points elsewhere
+                        String originFallbackBundle = activeManifestOrigin.replace("ota-manifest.json", "index.html");
+                        if (!originFallbackBundle.equals(bundleUrl)) {
+                            downloadedSha = downloadFileWithSha256(appendCacheBust(originFallbackBundle), tmpFile);
+                        }
+                    }
                     if (downloadedSha == null || !downloadedSha.equalsIgnoreCase(remoteSha)) {
                         if (tmpFile.exists()) tmpFile.delete();
                         notifyOtaStatus();
@@ -252,11 +320,19 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String appendCacheBust(String urlStr) {
+        String sep = urlStr.contains("?") ? "&" : "?";
+        return urlStr + sep + "t=" + System.currentTimeMillis();
+    }
+
     private String fetchUrlString(String urlStr) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate");
+            conn.setRequestProperty("Pragma", "no-cache");
             conn.setConnectTimeout(6000);
             conn.setReadTimeout(8000);
             conn.setRequestMethod("GET");
@@ -282,6 +358,9 @@ public class MainActivity extends Activity {
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate");
+            conn.setRequestProperty("Pragma", "no-cache");
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(20000);
             conn.setRequestMethod("GET");
@@ -349,6 +428,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getOtaInfo() {
             return buildOtaInfoJson();
+        }
+
+        @JavascriptInterface
+        public String getServerOrigin() {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String saved = prefs.getString(KEY_SERVER_ORIGIN, "");
+            if (saved != null && !saved.isEmpty()) {
+                return saved;
+            }
+            return "https://ais-pre-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app";
+        }
+
+        @JavascriptInterface
+        public String getAppVersion() {
+            return APP_VERSION_NAME;
         }
 
         @JavascriptInterface

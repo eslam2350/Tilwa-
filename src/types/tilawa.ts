@@ -26,6 +26,7 @@ export interface RecitationCollection {
   server: string;
   surahTotal: number;
   missingSurahs?: number[];
+  surahUrls?: Record<number, string>;
   sourceName: string;
 }
 
@@ -66,6 +67,72 @@ export interface AudioTrack {
   unavailableReason?: string;
   sourceName?: string;
   durationLabel?: string;
+  kind?: 'quran' | 'podcast';
+  episodeId?: string;
+  preacherId?: string;
+  category?: string;
+  publishedAt?: string;
+  durationSeconds?: number;
+}
+
+export type BasiraCategory =
+  | 'تصحيح المفاهيم الدينية'
+  | 'التوبة والذنوب'
+  | 'قضايا الشباب'
+  | 'الأخلاق والتربية'
+  | 'العبادات'
+  | 'العلاقات الاجتماعية'
+  | 'قصص وعبر'
+  | 'فتن العصر'
+  | 'نصائح دعوية'
+  | 'حلقات قصيرة'
+  | 'محاضرات طويلة';
+
+export interface BasiraPreacher {
+  id: string;
+  nameAr: string;
+  titleAr: string;
+  bioAr: string;
+  photoUrl: string;
+  specialties: string[];
+  featured: boolean;
+  published: boolean;
+  order: number;
+}
+
+export interface BasiraEpisode {
+  id: string;
+  preacherId: string;
+  title: string;
+  description: string;
+  coverUrl: string;
+  audioUrl: string;
+  durationSeconds: number;
+  durationLabel: string;
+  publishedAt: string;
+  category: BasiraCategory;
+  tags: string[];
+  featured?: boolean;
+  published: boolean;
+  order: number;
+}
+
+export interface BasiraPlaylist {
+  id: string;
+  preacherId: string;
+  title: string;
+  description: string;
+  coverUrl?: string;
+  episodeIds: string[];
+  published: boolean;
+  order: number;
+}
+
+export interface BasiraCatalogData {
+  preachers: BasiraPreacher[];
+  episodes: BasiraEpisode[];
+  playlists: BasiraPlaylist[];
+  updatedAt?: string;
 }
 
 export interface CuratedRecitation {
@@ -169,6 +236,9 @@ export type AppRoute =
   | { page: 'home' }
   | { page: 'reciters' }
   | { page: 'reciter'; reciterId: string }
+  | { page: 'basira'; category?: string }
+  | { page: 'basira-preacher'; preacherId: string }
+  | { page: 'basira-episode'; episodeId: string }
   | { page: 'mushaf'; surah?: number; pageNum?: number; juz?: number }
   | { page: 'tahfeez'; surah?: number; startAyah?: number; endAyah?: number }
   | { page: 'search'; query?: string }
@@ -180,11 +250,41 @@ export type HomeSectionId =
   | 'continue'
   | 'stations'
   | 'reciters'
+  | 'basiraShowcase'
   | 'latest'
   | 'mostListened'
-  | 'mushafShowcase';
+  | 'mushafShowcase'
+  | 'feedback';
 
-export type NavPageId = 'home' | 'reciters' | 'mushaf' | 'tahfeez' | 'search' | 'library';
+export type NavPageId = 'home' | 'reciters' | 'basira' | 'mushaf' | 'tahfeez' | 'search' | 'library';
+
+export type SectionEnhancementId =
+  | HomeSectionId
+  | 'recitersDirectory'
+  | 'basiraSection'
+  | 'mushafSection'
+  | 'tahfeezSection';
+
+export type SectionStylePreset =
+  | 'default'
+  | 'royal_gold'
+  | 'emerald_sanctuary'
+  | 'obsidian_glass'
+  | 'editorial_bordered';
+
+export type SectionDensity = 'compact' | 'comfortable' | 'spacious';
+
+export interface SectionEnhancementConfig {
+  boosted: boolean;
+  boostLevel: 'standard' | 'featured' | 'spotlight';
+  stylePreset: SectionStylePreset;
+  density: SectionDensity;
+  glowAccent: boolean;
+  showDivider: boolean;
+  badgeText: string;
+  customHeadline: string;
+  customSubtitle: string;
+}
 
 export interface DynamicThemeConfig {
   presetId: string;
@@ -238,6 +338,92 @@ export interface DynamicOtaConfig {
   releaseNotes: string;
 }
 
+export interface DynamicTypographyConfig {
+  displayFont: 'Amiri' | 'IBM Plex Sans Arabic' | 'Cairo' | 'Noto Naskh Arabic';
+  bodyFont: 'IBM Plex Sans Arabic' | 'Cairo' | 'Readex Pro';
+  baseFontSizePx: number;
+  cardRadiusPx: number;
+  glassBlurPx: number;
+}
+
+export interface DynamicAudioPlayerConfig {
+  defaultVolume: number;
+  defaultPlaybackRate: number;
+  autoPlayNext: boolean;
+  showWaveform: boolean;
+  enableSleepTimer: boolean;
+  enableSegmentLoop: boolean;
+}
+
+export interface DynamicSeoConfig {
+  metaTitle: string;
+  metaDescription: string;
+  metaKeywords: string;
+  ogTitle: string;
+  ogDescription: string;
+  canonicalUrl: string;
+  robotsIndex: boolean;
+}
+
+export interface DynamicPerformanceConfig {
+  precacheQuranOffline: boolean;
+  prefetchNextSurah: boolean;
+  cacheTtlHours: number;
+}
+
+export interface DynamicSecurityConfig {
+  blockedReciterKeywords: string[];
+  disabledReciterIds: string[];
+  allowedAudioDomains: string[];
+  sessionTimeoutMinutes: number;
+}
+
+export interface DynamicGeneralConfig {
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  showHijriDate: boolean;
+}
+
+export type CertificateTemplateId =
+  | 'royal_emerald'
+  | 'royal_ivory'
+  | 'kaaba_obsidian'
+  | 'andalusi_sapphire';
+
+export interface DynamicCertificatesConfig {
+  platformTitleAr: string;
+  signerName: string;
+  signerTitleAr: string;
+  signatureStyle: 'calligraphic_gold' | 'modern_minimal' | 'royal_emblem';
+  defaultTemplate?: CertificateTemplateId;
+  stampLabelAr: string;
+  blessingVerseAr: string;
+  memorizationAyahGoal: number;
+  listeningMinutesGoal: number;
+  listeningSurahsGoal: number;
+  readingPagesGoal: number;
+  tahfeezSessionsGoal: number;
+  requiredLevelMemorization?: number;
+  requiredLevelListening?: number;
+  requiredLevelExcellence?: number;
+  requiredLevelKhatmah?: number;
+}
+
+export interface DynamicMushafConfig {
+  defaultTheme: 'obsidian' | 'sepia' | 'light';
+  defaultFontSizePx: number;
+  showTafsirByDefault: boolean;
+  defaultReciterId: string;
+  enableJuzQuickNav: boolean;
+}
+
+export interface DynamicTahfeezConfig {
+  defaultRepeatsPerAyah: number;
+  defaultPauseSeconds: number;
+  enableVoiceHideByDefault: boolean;
+  autoAdvanceAyah: boolean;
+}
+
 export interface DynamicAppConfig {
   id: string;
   version: number;
@@ -247,7 +433,153 @@ export interface DynamicAppConfig {
   homeSections: DynamicSectionItem[];
   navPages: DynamicNavPageItem[];
   ota: DynamicOtaConfig;
+  typography?: DynamicTypographyConfig;
+  audioPlayer?: DynamicAudioPlayerConfig;
+  seo?: DynamicSeoConfig;
+  performance?: DynamicPerformanceConfig;
+  security?: DynamicSecurityConfig;
+  general?: DynamicGeneralConfig;
+  certificates?: DynamicCertificatesConfig;
+  mushaf?: DynamicMushafConfig;
+  tahfeez?: DynamicTahfeezConfig;
+  sectionEnhancements?: Record<string, SectionEnhancementConfig>;
+  featuredReciterOverrides?: string[];
   updatedBy?: string;
   updatedAt?: string | unknown;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  category: 'config' | 'reciter' | 'ai-dev' | 'backup' | 'security';
+  action: string;
+  summary: string;
+  details?: string;
+}
+
+export interface BackupFileItem {
+  filePath: string;
+  existedBefore: boolean;
+  content: string;
+}
+
+export interface BackupSnapshotMeta {
+  id: string;
+  createdAt: string;
+  label: string;
+  reason: string;
+  filesCount: number;
+  hasConfigSnapshot: boolean;
+  filesList: string[];
+}
+
+export interface DiffLineItem {
+  type: 'context' | 'add' | 'remove';
+  lineNumberBefore: number | null;
+  lineNumberAfter: number | null;
+  text: string;
+}
+
+export interface AiProposalChange {
+  filePath: string;
+  action: 'update' | 'create' | 'delete';
+  summary: string;
+  beforeContent: string;
+  afterContent: string;
+  diffLines: DiffLineItem[];
+}
+
+export interface AiProposalRecord {
+  id: string;
+  createdAt: string;
+  instruction: string;
+  analysis: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  changes: AiProposalChange[];
+  executedTools?: string[];
+  executionMode?: 'plan' | 'direct';
+  testStatus?: {
+    ranAt: string;
+    passed: boolean;
+    tscOutput: string;
+    testsOutput: string;
+  };
+  buildStatus?: {
+    ranAt: string;
+    passed: boolean;
+    output: string;
+  };
+  appliedAt?: string;
+  backupId?: string;
+  autoRolledBack?: boolean;
+}
+
+export interface AnalyticsSummary {
+  totalPageViews: number;
+  totalPlays: number;
+  routeCounts: Record<string, number>;
+  reciterPlays: Record<string, { name: string; count: number }>;
+  surahPlays: Record<string, { name: string; count: number }>;
+  dailyViews: Record<string, number>;
+  lastUpdatedAt: string;
+}
+
+export interface AudioProbeResult {
+  url: string;
+  ok: boolean;
+  status: number;
+  contentType: string;
+  contentLengthBytes: number | null;
+  latencyMs: number;
+  error?: string;
+}
+
+export type FeedbackCategory =
+  | 'general'
+  | 'audio'
+  | 'mushaf'
+  | 'tahfeez'
+  | 'basira'
+  | 'suggestion';
+
+export interface SiteFeedbackItem {
+  id: string;
+  authorName: string;
+  overallRating: number;
+  speedScore: number;
+  designScore: number;
+  audioScore: number;
+  category: FeedbackCategory;
+  comment: string;
+  visible: boolean;
+  pinned?: boolean;
+  adminReply?: string;
+  createdAt: string;
+}
+
+export interface SiteFeedbackSummary {
+  totalCount: number;
+  visibleCount: number;
+  averageOverall: number;
+  averageSpeed: number;
+  averageDesign: number;
+  averageAudio: number;
+  ratingDistribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
+export interface AiDeveloperJobStatus {
+  id: string;
+  kind: 'plan' | 'execute' | 'analyze';
+  status: 'running' | 'completed' | 'failed';
+  phase: string;
+  logs: string[];
+  createdAt: string;
+  updatedAt: string;
+  proposal?: AiProposalRecord;
+  analysisReport?: {
+    report: string;
+    checkedFiles: string[];
+  };
+  error?: string;
 }
 

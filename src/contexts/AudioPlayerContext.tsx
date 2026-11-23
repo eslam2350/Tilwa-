@@ -1,17 +1,37 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { QURAN_META } from '../data/reciters';
-import type { AudioTrack, Reciter, RepeatMode, SleepTimerOption } from '../types/tilawa';
+import type {
+  AudioTrack,
+  BasiraEpisode,
+  BasiraPlaylist,
+  BasiraPreacher,
+  Reciter,
+  RepeatMode,
+  SleepTimerOption,
+} from '../types/tilawa';
+import {
+  episodeToAudioTrack,
+  getSavedEpisodePosition,
+  saveBasiraEpisodeProgress,
+} from '../utils/basiraHelpers';
 import {
   buildSurahAudioUrl,
   cycleRepeatMode,
   formatSurahDisplayName,
   getDefaultPlayableSurahNumber,
   getNextSurahNumber,
+  isBlockedReciter,
   isSurahAvailableInCollection,
   shuffleTracks,
 } from '../utils/quranHelpers';
+import {
+  loadListenerStats,
+  recordListeningTick,
+  saveListenerStats,
+} from '../utils/certificateHelpers';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
+import { useDynamicConfig } from './DynamicConfigContext';
 
 interface SegmentLoop {
   start: number | null;
@@ -24,14 +44,17 @@ interface PlayCollectionOptions {
   startTrackId?: string;
 }
 
+interface AudioProgressContextValue {
+  currentTime: number;
+  duration: number;
+}
+
 interface AudioPlayerContextValue {
   currentTrack: AudioTrack | null;
   queue: AudioTrack[];
   isPlaying: boolean;
   isBuffering: boolean;
   audioError: string | null;
-  currentTime: number;
-  duration: number;
   volume: number;
   isMuted: boolean;
   playbackRate: number;
@@ -47,6 +70,19 @@ interface AudioPlayerContextValue {
   playTrack: (track: AudioTrack, newQueue?: AudioTrack[], resumeSeconds?: number) => void;
   playCollection: (tracks: AudioTrack[], options?: PlayCollectionOptions) => void;
   playSurahByReciter: (reciter: Reciter, surahNumber: number, preferredStyle?: string, resumeSeconds?: number) => void;
+  playBasiraEpisode: (
+    episode: BasiraEpisode,
+    preacher: BasiraPreacher | undefined,
+    allPreachers: BasiraPreacher[],
+    queueEpisodes?: BasiraEpisode[],
+    options?: { resume?: boolean; startSeconds?: number }
+  ) => void;
+  playBasiraPlaylist: (
+    playlist: BasiraPlaylist,
+    allEpisodes: BasiraEpisode[],
+    allPreachers: BasiraPreacher[],
+    shuffle?: boolean
+  ) => void;
   togglePlayPause: () => void;
   seekTo: (seconds: number) => void;
   seekRelative: (delta: number) => void;
@@ -70,15 +106,25 @@ interface AudioPlayerContextValue {
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
+const AudioProgressContext = createContext<AudioProgressContextValue>({
+  currentTime: 0,
+  duration: 0,
+});
 
 export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { reciters, notify } = useAppData();
   const { prefs, recordListeningProgress, savePreferences } = useAuth();
+  const { config } = useDynamicConfig();
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSavedTimeRef = useRef<number>(0);
   const baseQueueRef = useRef<AudioTrack[]>([]);
   const pendingResumeCleanupRef = useRef<(() => void) | null>(null);
+  const userTouchedAudioPrefsRef = useRef<{ volume: boolean; rate: boolean; autoNext: boolean }>({
+    volume: false,
+    rate: false,
+    autoNext: false,
+  });
 
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [queue, setQueue] = useState<AudioTrack[]>([]);
@@ -87,12 +133,14 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [audioError, setAudioError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolumeState] = useState(0.9);
+  const [volume, setVolumeState] = useState(config.audioPlayer?.defaultVolume ?? 0.9);
   const [isMuted, setIsMuted] = useState(false);
-  const [playbackRate, setPlaybackRateState] = useState(prefs.playbackRate || 1);
+  const [playbackRate, setPlaybackRateState] = useState(
+    prefs.playbackRate || config.audioPlayer?.defaultPlaybackRate || 1
+  );
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('all');
   const [isShuffle, setIsShuffle] = useState(false);
-  const [autoPlayNext, setAutoPlayNext] = useState(true);
+  const [autoPlayNext, setAutoPlayNext] = useState(config.audioPlayer?.autoPlayNext ?? true);
   const [segmentLoop, setSegmentLoop] = useState<SegmentLoop>({
     start: null,
     end: null,
@@ -108,11 +156,32 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const seekRelativeRef = useRef<(d: number) => void>(() => {});
   const toggleMuteRef = useRef<() => void>(() => {});
 
+  // Apply dynamic admin player defaults if visitor has not overridden them in session
+  useEffect(() => {
+    const ply = config.audioPlayer;
+    if (!ply) return;
+    if (!userTouchedAudioPrefsRef.current.volume) {
+      setVolumeState(ply.defaultVolume);
+      if (audioRef.current && !isMuted) {
+        audioRef.current.volume = ply.defaultVolume;
+      }
+    }
+    if (!userTouchedAudioPrefsRef.current.rate) {
+      setPlaybackRateState(ply.defaultPlaybackRate);
+      if (audioRef.current) {
+        audioRef.current.playbackRate = ply.defaultPlaybackRate;
+      }
+    }
+    if (!userTouchedAudioPrefsRef.current.autoNext) {
+      setAutoPlayNext(ply.autoPlayNext);
+    }
+  }, [config.audioPlayer, isMuted]);
+
   // Mount persistent HTMLAudioElement once
   useEffect(() => {
     const el = new Audio();
     el.preload = 'metadata';
-    el.volume = 0.9;
+    el.volume = config.audioPlayer?.defaultVolume ?? 0.9;
     audioRef.current = el;
 
     return () => {
@@ -140,6 +209,23 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, 1000);
     return () => window.clearInterval(timer);
   }, [sleepTimerOption, sleepRemainingSeconds, notify]);
+
+  // Track real continuous Quran listening time for appreciation certificates
+  useEffect(() => {
+    if (!isPlaying || !currentTrack) return;
+    const surahKey = `${currentTrack.reciterId}_${currentTrack.surahNumber}`;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    // Record surah start cleanly on playback begin
+    saveListenerStats(recordListeningTick(loadListenerStats(), 0, todayIso, surahKey));
+
+    const tracker = window.setInterval(() => {
+      const el = audioRef.current;
+      if (!el || el.paused) return;
+      const dayNow = new Date().toISOString().slice(0, 10);
+      saveListenerStats(recordListeningTick(loadListenerStats(), 5, dayNow, surahKey));
+    }, 5000);
+    return () => window.clearInterval(tracker);
+  }, [isPlaying, currentTrack]);
 
   // Sync audio element listeners
   useEffect(() => {
@@ -177,20 +263,26 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
-      // Periodically save listening progress every 10s
-      if (currentTrack && Math.abs(t - lastSavedTimeRef.current) >= 10) {
+      // Periodically save listening progress every 5s for podcasts or 10s for recitations
+      const saveInterval = currentTrack?.kind === 'podcast' ? 5 : 10;
+      if (currentTrack && Math.abs(t - lastSavedTimeRef.current) >= saveInterval) {
         lastSavedTimeRef.current = t;
-        void recordListeningProgress({
-          id: `${currentTrack.reciterId}_${currentTrack.surahNumber}`,
-          reciterId: currentTrack.reciterId,
-          reciterName: currentTrack.reciterName,
-          surahNumber: currentTrack.surahNumber,
-          surahName: currentTrack.surahName,
-          style: currentTrack.style,
-          audioUrl: currentTrack.audioUrl,
-          progressSeconds: Math.floor(t),
-          durationSeconds: Number.isFinite(el.duration) ? Math.floor(el.duration) : 0,
-        });
+        const dur = Number.isFinite(el.duration) ? Math.floor(el.duration) : currentTrack.durationSeconds || 0;
+        if (currentTrack.kind === 'podcast' && currentTrack.episodeId) {
+          saveBasiraEpisodeProgress(currentTrack.episodeId, t, dur);
+        } else {
+          void recordListeningProgress({
+            id: `${currentTrack.reciterId}_${currentTrack.surahNumber}`,
+            reciterId: currentTrack.reciterId,
+            reciterName: currentTrack.reciterName,
+            surahNumber: currentTrack.surahNumber,
+            surahName: currentTrack.surahName,
+            style: currentTrack.style,
+            audioUrl: currentTrack.audioUrl,
+            progressSeconds: Math.floor(t),
+            durationSeconds: dur,
+          });
+        }
       }
     };
     const onEnded = () => {
@@ -246,6 +338,13 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const playTrack = useCallback(
     (track: AudioTrack, newQueue?: AudioTrack[], resumeSeconds = 0) => {
+      const disabledIds = config.security?.disabledReciterIds || [];
+      if (
+        isBlockedReciter({ id: track.reciterId, nameAr: track.reciterName }) ||
+        disabledIds.includes(track.reciterId)
+      ) {
+        return;
+      }
       if (!track.isAvailable || !track.audioUrl) {
         const msg =
           track.unavailableReason ||
@@ -301,19 +400,39 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsPlaying(false);
       });
 
-      void recordListeningProgress({
-        id: `${track.reciterId}_${track.surahNumber}`,
-        reciterId: track.reciterId,
-        reciterName: track.reciterName,
-        surahNumber: track.surahNumber,
-        surahName: track.surahName,
-        style: track.style,
-        audioUrl: track.audioUrl,
-        progressSeconds: Math.floor(resumeSeconds),
-        durationSeconds: 0,
-      });
+      void fetch('/api/public/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'play',
+          reciterId: track.reciterId,
+          reciterName: track.reciterName,
+          surahNumber: track.surahNumber,
+          surahName: track.surahName,
+        }),
+      }).catch(() => {});
+
+      if (track.kind === 'podcast' && track.episodeId) {
+        saveBasiraEpisodeProgress(
+          track.episodeId,
+          resumeSeconds,
+          track.durationSeconds || 0
+        );
+      } else {
+        void recordListeningProgress({
+          id: `${track.reciterId}_${track.surahNumber}`,
+          reciterId: track.reciterId,
+          reciterName: track.reciterName,
+          surahNumber: track.surahNumber,
+          surahName: track.surahName,
+          style: track.style,
+          audioUrl: track.audioUrl,
+          progressSeconds: Math.floor(resumeSeconds),
+          durationSeconds: 0,
+        });
+      }
     },
-    [isMuted, notify, playbackRate, recordListeningProgress, volume]
+    [config.security?.disabledReciterIds, isMuted, notify, playbackRate, recordListeningProgress, volume]
   );
 
   const playCollection = useCallback(
@@ -345,6 +464,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const playSurahByReciter = useCallback(
     (reciter: Reciter, surahNumber: number, preferredStyle?: string, resumeSeconds = 0) => {
+      const disabledIds = config.security?.disabledReciterIds || [];
+      if (isBlockedReciter(reciter) || disabledIds.includes(reciter.id)) return;
       const surah = QURAN_META.surahs.find((s) => s.number === surahNumber);
       if (!surah) return;
 
@@ -378,7 +499,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         surahName: cleanSurahName,
         style: collection.style,
         riwayah: collection.riwayah,
-        audioUrl: available ? buildSurahAudioUrl(collection.server, surahNumber) : '',
+        audioUrl: available ? buildSurahAudioUrl(collection.server, surahNumber, collection.surahUrls) : '',
         isAvailable: available,
         unavailableReason: available
           ? undefined
@@ -388,7 +509,59 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       playTrack(track, undefined, resumeSeconds);
     },
-    [notify, playTrack]
+    [config.security?.disabledReciterIds, notify, playTrack]
+  );
+
+  const playBasiraEpisode = useCallback(
+    (
+      episode: BasiraEpisode,
+      preacher: BasiraPreacher | undefined,
+      allPreachers: BasiraPreacher[],
+      queueEpisodes?: BasiraEpisode[],
+      options?: { resume?: boolean; startSeconds?: number }
+    ) => {
+      const preacherMap = new Map(allPreachers.map((p) => [p.id, p]));
+      const list = queueEpisodes && queueEpisodes.length > 0 ? queueEpisodes : [episode];
+      const tracks = list.map((ep, idx) =>
+        episodeToAudioTrack(ep, preacherMap.get(ep.preacherId) || preacher, idx + 1)
+      );
+      const targetTrack =
+        tracks.find((t) => t.episodeId === episode.id) ||
+        episodeToAudioTrack(episode, preacher, 1);
+
+      const resumeSec =
+        typeof options?.startSeconds === 'number'
+          ? options.startSeconds
+          : options?.resume !== false
+          ? getSavedEpisodePosition(episode.id)
+          : 0;
+
+      playTrack(targetTrack, tracks, resumeSec);
+    },
+    [playTrack]
+  );
+
+  const playBasiraPlaylist = useCallback(
+    (
+      playlist: BasiraPlaylist,
+      allEpisodes: BasiraEpisode[],
+      allPreachers: BasiraPreacher[],
+      shuffle = false
+    ) => {
+      const epMap = new Map(allEpisodes.map((e) => [e.id, e]));
+      const preacherMap = new Map(allPreachers.map((p) => [p.id, p]));
+      const tracks = playlist.episodeIds
+        .map((id) => epMap.get(id))
+        .filter((e): e is BasiraEpisode => Boolean(e && e.audioUrl && e.published !== false))
+        .map((ep, idx) => episodeToAudioTrack(ep, preacherMap.get(ep.preacherId), idx + 1));
+
+      if (tracks.length === 0) {
+        notify('لا توجد حلقات صوتية متاحة في هذه القائمة حاليًا', 'error');
+        return;
+      }
+      playCollection(tracks, { shuffle });
+    },
+    [notify, playCollection]
   );
 
   const togglePlayPause = useCallback(() => {
@@ -458,6 +631,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const playPrev = useCallback(() => stepTrack('prev'), [stepTrack]);
 
   const setVolume = useCallback((vol: number) => {
+    userTouchedAudioPrefsRef.current.volume = true;
     const clamped = Math.max(0, Math.min(1, vol));
     setVolumeState(clamped);
     setIsMuted(clamped === 0);
@@ -539,6 +713,7 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const setPlaybackRate = useCallback(
     (rate: number) => {
+      userTouchedAudioPrefsRef.current.rate = true;
       const clamped = Math.max(0.5, Math.min(2.0, rate));
       setPlaybackRateState(clamped);
       if (audioRef.current) {
@@ -586,7 +761,10 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [currentTrack?.id, notify]);
 
-  const toggleAutoPlayNext = useCallback(() => setAutoPlayNext((p) => !p), []);
+  const toggleAutoPlayNext = useCallback(() => {
+    userTouchedAudioPrefsRef.current.autoNext = true;
+    setAutoPlayNext((p) => !p);
+  }, []);
 
   const setSleepTimer = useCallback(
     (option: SleepTimerOption) => {
@@ -606,32 +784,34 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 
   const setLoopStart = useCallback(() => {
+    const now = audioRef.current?.currentTime ?? 0;
     setSegmentLoop((prev) => ({
-      start: Math.floor(currentTime),
-      end: prev.end !== null && prev.end > currentTime ? prev.end : null,
-      active: prev.end !== null && prev.end > currentTime,
+      start: Math.floor(now),
+      end: prev.end !== null && prev.end > now ? prev.end : null,
+      active: prev.end !== null && prev.end > now,
     }));
     notify('تم تحديد نقطة بداية إعادة المقطع (أ)', 'info');
-  }, [currentTime, notify]);
+  }, [notify]);
 
   const setLoopEnd = useCallback(() => {
+    const now = audioRef.current?.currentTime ?? 0;
     if (segmentLoop.start === null) {
-      const start = Math.max(0, Math.floor(currentTime) - 10);
-      setSegmentLoop({ start, end: Math.floor(currentTime), active: true });
+      const start = Math.max(0, Math.floor(now) - 10);
+      setSegmentLoop({ start, end: Math.floor(now), active: true });
       notify('تم تفعيل إعادة المقطع للثواني العشر الأخيرة', 'success');
       return;
     }
-    if (currentTime <= segmentLoop.start + 1) {
+    if (now <= segmentLoop.start + 1) {
       notify('يجب أن تكون نقطة النهاية بعد نقطة البداية', 'error');
       return;
     }
     setSegmentLoop({
       start: segmentLoop.start,
-      end: Math.floor(currentTime),
+      end: Math.floor(now),
       active: true,
     });
     notify('تم تفعيل إعادة المقطع (أ - ب)', 'success');
-  }, [currentTime, notify, segmentLoop.start]);
+  }, [notify, segmentLoop.start]);
 
   const clearSegmentLoop = useCallback(() => {
     setSegmentLoop({ start: null, end: null, active: false });
@@ -694,6 +874,11 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [currentTrack, notify, playSurahByReciter]
   );
 
+  const progressValue = useMemo(
+    () => ({ currentTime, duration }),
+    [currentTime, duration]
+  );
+
   const value = useMemo(
     () => ({
       currentTrack,
@@ -701,8 +886,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isPlaying,
       isBuffering,
       audioError,
-      currentTime,
-      duration,
       volume,
       isMuted,
       playbackRate,
@@ -718,6 +901,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       playTrack,
       playCollection,
       playSurahByReciter,
+      playBasiraEpisode,
+      playBasiraPlaylist,
       togglePlayPause,
       seekTo,
       seekRelative,
@@ -745,8 +930,6 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isPlaying,
       isBuffering,
       audioError,
-      currentTime,
-      duration,
       volume,
       isMuted,
       playbackRate,
@@ -760,6 +943,8 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       playTrack,
       playCollection,
       playSurahByReciter,
+      playBasiraEpisode,
+      playBasiraPlaylist,
       togglePlayPause,
       seekTo,
       seekRelative,
@@ -783,11 +968,21 @@ export const AudioPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ]
   );
 
-  return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>;
+  return (
+    <AudioPlayerContext.Provider value={value}>
+      <AudioProgressContext.Provider value={progressValue}>
+        {children}
+      </AudioProgressContext.Provider>
+    </AudioPlayerContext.Provider>
+  );
 };
 
 export function useAudioPlayer() {
   const ctx = useContext(AudioPlayerContext);
   if (!ctx) throw new Error('useAudioPlayer must be used inside AudioPlayerProvider');
   return ctx;
+}
+
+export function useAudioProgress() {
+  return useContext(AudioProgressContext);
 }

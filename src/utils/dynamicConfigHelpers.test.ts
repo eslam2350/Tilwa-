@@ -4,10 +4,12 @@ import {
   DEFAULT_DYNAMIC_CONFIG,
   DEFAULT_HOME_SECTIONS,
   DEFAULT_NAV_PAGES,
+  getConfigChangedSections,
   isCustomTheme,
   isNewerConfigVersion,
   isValidHexColor,
   mergeDynamicConfig,
+  mergeSectionEnhancements,
   moveOrderedItem,
   sanitizeHexColor,
   sanitizeImageUrl,
@@ -51,11 +53,11 @@ test('mergeDynamicConfig preserves defaults and appends missing sections or page
 
 test('moveOrderedItem swaps adjacent sections and reindexes order sequentially', () => {
   const movedUp = moveOrderedItem(DEFAULT_HOME_SECTIONS, 'reciters', 'up');
-  assert.equal(movedUp[2].id, 'reciters');
-  assert.equal(movedUp[3].id, 'stations');
+  assert.equal(movedUp[1].id, 'reciters');
+  assert.equal(movedUp[2].id, 'continue');
   assert.deepEqual(
     movedUp.map((x) => x.order),
-    [0, 1, 2, 3, 4, 5, 6]
+    DEFAULT_HOME_SECTIONS.map((_, i) => i)
   );
 
   // Moving first item up stays unchanged
@@ -81,3 +83,71 @@ test('isCustomTheme detects modifications from default obsidian_gold theme', () 
   assert.equal(isNewerConfigVersion(4, 3), true);
   assert.equal(isNewerConfigVersion(3, 3), false);
 });
+
+test('getConfigChangedSections detects modified draft categories accurately', () => {
+  assert.equal(getConfigChangedSections(DEFAULT_DYNAMIC_CONFIG, DEFAULT_DYNAMIC_CONFIG).length, 0);
+  const modified = {
+    ...DEFAULT_DYNAMIC_CONFIG,
+    texts: { ...DEFAULT_DYNAMIC_CONFIG.texts, slogan: 'شعار جديد' },
+    theme: { ...DEFAULT_DYNAMIC_CONFIG.theme, goldAntique: '#FFD700' },
+  };
+  const diffs = getConfigChangedSections(modified, DEFAULT_DYNAMIC_CONFIG);
+  assert.deepEqual(
+    diffs.map((d) => d.key),
+    ['texts', 'theme']
+  );
+});
+
+test('mergeDynamicConfig strips legacy developer names from certificates and clamps required levels', () => {
+  const merged = mergeDynamicConfig({
+    certificates: {
+      signerName: 'Eslam Mohammad',
+      signerTitleAr: 'المشرف العام ومؤسس منصة تلاوة',
+      requiredLevelListening: 99,
+      requiredLevelMemorization: 0,
+      requiredLevelExcellence: 4,
+      requiredLevelKhatmah: 6,
+    },
+  });
+  assert.equal(merged.certificates?.signerName, 'منصة تلاوة · TILAWA');
+  assert.equal(merged.certificates?.signerTitleAr, 'إدارة منصة تلاوة للقرآن الكريم');
+  assert.equal(merged.certificates?.requiredLevelListening, 10);
+  assert.equal(merged.certificates?.requiredLevelMemorization, 1);
+  assert.equal(merged.certificates?.requiredLevelExcellence, 4);
+  assert.equal(merged.certificates?.requiredLevelKhatmah, 6);
+});
+
+test('mergeSectionEnhancements sanitizes presets, densities, lengths and flags sectionEnhancements diffs', () => {
+  const merged = mergeSectionEnhancements({
+    hero: {
+      boosted: true,
+      boostLevel: 'spotlight',
+      stylePreset: 'royal_gold',
+      density: 'spacious',
+      glowAccent: true,
+      showDivider: true,
+      badgeText: '  مختارات  ',
+      customHeadline: 'عنوان تجريبي',
+    },
+    recitersDirectory: {
+      boosted: true,
+      stylePreset: 'invalid_preset',
+      density: 'invalid_density',
+    },
+  });
+
+  assert.equal(merged.hero.boosted, true);
+  assert.equal(merged.hero.stylePreset, 'royal_gold');
+  assert.equal(merged.hero.badgeText, 'مختارات');
+  assert.equal(merged.recitersDirectory.boosted, true);
+  assert.equal(merged.recitersDirectory.stylePreset, 'default');
+  assert.equal(merged.recitersDirectory.density, 'comfortable');
+
+  const modifiedConfig = {
+    ...DEFAULT_DYNAMIC_CONFIG,
+    sectionEnhancements: merged,
+  };
+  const diffs = getConfigChangedSections(modifiedConfig, DEFAULT_DYNAMIC_CONFIG);
+  assert.equal(diffs.some((d) => d.key === 'sectionEnhancements'), true);
+});
+

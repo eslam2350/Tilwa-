@@ -1,24 +1,44 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Award,
+  BadgeCheck,
   BookOpen,
   CalendarCheck,
+  Check,
   CheckCircle2,
   Clock,
   Flame,
   Heart,
   ListMusic,
+  Lock,
   Play,
   Plus,
   RotateCcw,
   Settings,
   Shuffle,
   Trash2,
+  Trophy,
 } from 'lucide-react';
+import { CertificateModal } from '../components/CertificateModal';
+import { ReciterImage } from '../components/ReciterImage';
 import { QURAN_META } from '../data/reciters';
 import { useAppData } from '../contexts/AppDataContext';
 import { useAudioPlayer } from '../contexts/AudioPlayerContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useDynamicConfig } from '../contexts/DynamicConfigContext';
 import type { AppRoute, AudioTrack } from '../types/tilawa';
+import {
+  computeListeningStreakDays,
+  computeUserProgressLevel,
+  evaluateCertificates,
+  JUZ_NAMES_AR,
+  LISTENER_STATS_EVENT,
+  loadListenerStats,
+  saveListenerStats,
+  toggleMemorizedJuz,
+  type CertificateEvaluation,
+  type ListenerStatsState,
+} from '../utils/certificateHelpers';
 import {
   TOTAL_MUSHAF_PAGES,
   clampMushafPage,
@@ -35,6 +55,7 @@ import {
   getDefaultPlayableSurahNumber,
   toArabicDigits,
 } from '../utils/quranHelpers';
+import { calculateTahfeezStats, type TahfeezProgressMap } from '../utils/tahfeezHelpers';
 
 interface LibraryPageProps {
   navigate: (next: AppRoute) => void;
@@ -42,6 +63,7 @@ interface LibraryPageProps {
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
   const { reciters, notify } = useAppData();
+  const { config } = useDynamicConfig();
   const { playSurahByReciter, playCollection, playTrack } = useAudioPlayer();
   const {
     favorites,
@@ -58,14 +80,80 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
     clearAllLocalData,
   } = useAuth();
 
-  const [tab, setTab] = useState<'playlists' | 'khatmah' | 'favorites' | 'history' | 'settings'>(
-    'playlists'
-  );
+  const [tab, setTab] = useState<
+    'playlists' | 'khatmah' | 'certificates' | 'favorites' | 'history' | 'settings'
+  >('playlists');
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(
     () => playlists[0]?.id ?? null
   );
   const [khatmah, setKhatmah] = useState<KhatmahState>(() => loadKhatmahState());
+  const [listenerStats, setListenerStats] = useState<ListenerStatsState>(() =>
+    loadListenerStats()
+  );
+  const [selectedCertificateId, setSelectedCertificateId] = useState<
+    CertificateEvaluation['id'] | null
+  >(null);
+
+  useEffect(() => {
+    const syncStats = () => setListenerStats(loadListenerStats());
+    window.addEventListener(LISTENER_STATS_EVENT, syncStats);
+    window.addEventListener('storage', syncStats);
+    return () => {
+      window.removeEventListener(LISTENER_STATS_EVENT, syncStats);
+      window.removeEventListener('storage', syncStats);
+    };
+  }, []);
+
+  const tahfeezStats = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('tilawa_tahfeez_progress_v1');
+      const map: TahfeezProgressMap = raw ? (JSON.parse(raw) as TahfeezProgressMap) : {};
+      return calculateTahfeezStats(map, QURAN_META.surahs);
+    } catch {
+      return { memorizedAyahs: 0, completedSurahs: 0, totalAyahs: 6236, percent: 0 };
+    }
+  }, [tab]);
+
+  const certificates = useMemo(
+    () =>
+      evaluateCertificates({
+        stats: listenerStats,
+        memorizedAyahsCount: tahfeezStats.memorizedAyahs,
+        completedSurahsCount: tahfeezStats.completedSurahs,
+        historyCount: history.length,
+        completedKhatmahsCount: khatmah.completedKhatmahs,
+        config: config.certificates,
+      }),
+    [listenerStats, tahfeezStats, history.length, khatmah.completedKhatmahs, config.certificates]
+  );
+
+  const userLevel = useMemo(
+    () =>
+      computeUserProgressLevel({
+        stats: listenerStats,
+        memorizedAyahsCount: tahfeezStats.memorizedAyahs,
+        completedSurahsCount: tahfeezStats.completedSurahs,
+        historyCount: history.length,
+        completedKhatmahsCount: khatmah.completedKhatmahs,
+      }),
+    [listenerStats, tahfeezStats, history.length, khatmah.completedKhatmahs]
+  );
+
+  const selectedCertificate = useMemo(
+    () => certificates.find((c) => c.id === selectedCertificateId) || null,
+    [certificates, selectedCertificateId]
+  );
+
+  const streakDays = useMemo(
+    () => computeListeningStreakDays(listenerStats.activeDays),
+    [listenerStats.activeDays]
+  );
+
+  const updateListenerStats = (next: ListenerStatsState) => {
+    const clean = saveListenerStats(next);
+    setListenerStats(clean);
+  };
 
   const updateKhatmah = (next: KhatmahState) => {
     setKhatmah(next);
@@ -206,6 +294,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
         {[
           { id: 'playlists' as const, label: 'قوائم التشغيل', icon: <ListMusic className="w-4 h-4" /> },
           { id: 'khatmah' as const, label: 'الختمة اليومية', icon: <CalendarCheck className="w-4 h-4" /> },
+          { id: 'certificates' as const, label: 'شهادات التقدير', icon: <Award className="w-4 h-4" /> },
           { id: 'favorites' as const, label: 'المفضلة', icon: <Heart className="w-4 h-4" /> },
           { id: 'history' as const, label: 'سجل الاستماع', icon: <Clock className="w-4 h-4" /> },
           { id: 'settings' as const, label: 'الإعدادات', icon: <Settings className="w-4 h-4" /> },
@@ -375,6 +464,260 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
         </section>
       )}
 
+      {/* Professional Certificates Tab */}
+      {tab === 'certificates' && (
+        <section aria-label="شهادات التقدير القرآنية" className="space-y-6">
+          {/* Recipient Personalization & Activity Overview */}
+          <div className="glass-gold rounded-2xl p-6 space-y-5 border border-[#C8A253]/30">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#C8A253]">
+                  <Award className="w-4 h-4" />
+                  <span>نظام الشهادات المعتمدة من منصة تلاوة</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-display font-bold text-[#F5F3EE]">
+                  شهادات تقدير الحفظ والمواظبة على سماع القرآن الكريم
+                </h2>
+                <p className="text-xs sm:text-sm text-[#A9B2AE] max-w-2xl">
+                  تُمنح شهادات التقدير المعتمدة عند الوصول إلى <strong className="text-[#C8A253]">المستوى المطلوب</strong> وإتمام شرط الشهادة، مع إمكانية كتابة اسمك وتحميلها بصيغة PNG أو PDF.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0 text-center">
+                <div className="px-3 py-2.5 rounded-xl bg-[#0A0D0C]/80 border border-[#C8A253]/35">
+                  <p className="text-base sm:text-lg font-mono-nums font-bold text-[#C8A253]">
+                    {toArabicDigits(userLevel.level)} / ١٠
+                  </p>
+                  <p className="text-[10px] text-[#A9B2AE]">المستوى الحالي</p>
+                </div>
+                <div className="px-3 py-2.5 rounded-xl bg-[#0A0D0C]/80 border border-white/10">
+                  <p className="text-base sm:text-lg font-mono-nums font-bold text-emerald-300">
+                    {toArabicDigits(userLevel.xp)}
+                  </p>
+                  <p className="text-[10px] text-[#A9B2AE]">مجموع النقاط</p>
+                </div>
+                <div className="px-3 py-2.5 rounded-xl bg-[#0A0D0C]/80 border border-white/10">
+                  <p className="text-base sm:text-lg font-mono-nums font-bold text-[#F5F3EE]">
+                    {toArabicDigits(Math.floor(listenerStats.totalListeningSeconds / 60))}
+                  </p>
+                  <p className="text-[10px] text-[#A9B2AE]">دقيقة استماع</p>
+                </div>
+                <div className="px-3 py-2.5 rounded-xl bg-[#0A0D0C]/80 border border-white/10">
+                  <p className="text-base sm:text-lg font-mono-nums font-bold text-[#F5F3EE]">
+                    {toArabicDigits(Math.max(1, streakDays || listenerStats.activeDays.length))}
+                  </p>
+                  <p className="text-[10px] text-[#A9B2AE]">أيام المداومة</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Level Progress & XP Bar */}
+            <div className="rounded-xl bg-[#0A0D0C]/80 border border-[#C8A253]/25 p-4 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="inline-flex items-center gap-2 font-bold text-[#F5F3EE]">
+                  <Trophy className="w-4 h-4 text-[#C8A253]" />
+                  <span>
+                    المستوى {toArabicDigits(userLevel.level)}: {userLevel.titleAr}
+                  </span>
+                </div>
+                <span className="text-[#C8A253] font-medium">
+                  {userLevel.nextLevel
+                    ? `متبقٍّ ${toArabicDigits(userLevel.xpToNextLevel)} نقطة للوصول إلى المستوى ${toArabicDigits(userLevel.nextLevel)} (${userLevel.nextLevelTitleAr})`
+                    : 'وصلت إلى أعلى مستوى في منصة تلاوة بحمد الله'}
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-l from-[#C8A253] to-[#178A64] transition-all duration-300"
+                  style={{ width: `${userLevel.levelProgressPercent}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-[#A9B2AE]">
+                تكتسب النقاط تلقائيًا مع كل دقيقة استماع (+٥) · صفحة مصحف (+١٥) · سورة مسموعة (+٢٠) · يوم مداومة (+٤٠) · جلسة تحفيظ (+٤٥) · جزء محفوظ (+١٨٠) · ختمة كاملة (+٤٠٠).
+              </p>
+            </div>
+
+            <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-end gap-3">
+              <label className="flex-1 space-y-1.5 block">
+                <span className="text-xs font-medium text-[#C8A253] block">
+                  اسم صاحب الشهادة (يُطبع مباشرة داخل الشهادة بالخط العربي)
+                </span>
+                <input
+                  type="text"
+                  value={listenerStats.recipientName}
+                  onChange={(e) =>
+                    updateListenerStats({
+                      ...listenerStats,
+                      recipientName: e.target.value,
+                    })
+                  }
+                  maxLength={80}
+                  placeholder="اكتب اسمك الكامل هنا..."
+                  className="w-full px-4 py-2.5 rounded-xl bg-[#0A0D0C] border border-[#C8A253]/35 text-sm text-[#F5F3EE] placeholder:text-[#A9B2AE]/55 focus:outline-none focus:border-[#C8A253]"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => navigate({ page: 'tahfeez' })}
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs text-[#F5F3EE] cursor-pointer shrink-0"
+              >
+                الانتقال إلى قسم التحفيظ
+              </button>
+            </div>
+          </div>
+
+          {/* 4 Earned / Progress Certificate Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {certificates.map((cert) => (
+              <article
+                key={cert.id}
+                className={`rounded-2xl p-5 flex flex-col justify-between gap-4 border transition-colors ${
+                  cert.earned
+                    ? 'glass-gold border-[#C8A253]/55'
+                    : 'glass-panel border-white/10'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold ${
+                        cert.earned
+                          ? 'bg-[#0E6B4D] text-white'
+                          : 'bg-white/5 text-[#A9B2AE] border border-white/10'
+                      }`}
+                    >
+                      {cert.earned ? (
+                        <>
+                          <BadgeCheck className="w-3.5 h-3.5 text-[#38BDF8]" />
+                          <span>مؤهلة للإصدار</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3.5 h-3.5 text-[#C8A253]" />
+                          <span>يتطلب المستوى {toArabicDigits(cert.requiredLevel)}</span>
+                        </>
+                      )}
+                    </span>
+                    <span dir="ltr" className="text-[10px] font-mono-nums text-[#C8A253]/85">
+                      {cert.sealNumber}
+                    </span>
+                  </div>
+
+                  <h3 className="text-base font-display font-bold text-[#F5F3EE] leading-snug">
+                    {cert.titleAr}
+                  </h3>
+                  <p className="text-xs text-[#A9B2AE] leading-relaxed">{cert.subtitleAr}</p>
+
+                  {/* Two-Part Unlock Criteria: Level + Activity */}
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border ${
+                        cert.levelMet
+                          ? 'bg-emerald-950/50 border-emerald-500/35 text-emerald-300'
+                          : 'bg-amber-950/40 border-[#C8A253]/30 text-amber-200'
+                      }`}
+                    >
+                      {cert.levelMet ? (
+                        <CheckCircle2 className="w-3 h-3" />
+                      ) : (
+                        <Lock className="w-3 h-3" />
+                      )}
+                      <span>
+                        المستوى المطلوب: {toArabicDigits(cert.requiredLevel)} (مستواك:{' '}
+                        {toArabicDigits(cert.currentLevel)})
+                      </span>
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border ${
+                        cert.activityGoalMet
+                          ? 'bg-emerald-950/50 border-emerald-500/35 text-emerald-300'
+                          : 'bg-white/5 border-white/10 text-[#A9B2AE]'
+                      }`}
+                    >
+                      {cert.activityGoalMet ? (
+                        <CheckCircle2 className="w-3 h-3" />
+                      ) : (
+                        <Clock className="w-3 h-3" />
+                      )}
+                      <span>{cert.activityGoalMet ? 'تم شرط النشاط' : 'شرط النشاط قيد التقدم'}</span>
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-[#C8A253] font-medium">{cert.progressSummaryAr}</span>
+                      <span className="font-mono-nums text-[#F5F3EE]">
+                        {toArabicDigits(cert.progressPercent)}٪
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          cert.earned ? 'bg-[#C8A253]' : 'bg-[#0E6B4D]'
+                        }`}
+                        style={{ width: `${cert.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCertificateId(cert.id)}
+                  className={`w-full min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                    cert.earned
+                      ? 'bg-[#C8A253] hover:bg-[#d6b368] text-[#0A0D0C]'
+                      : 'bg-white/5 hover:bg-white/10 border border-white/15 text-[#F5F3EE]'
+                  }`}
+                >
+                  {cert.earned ? <Award className="w-4 h-4" /> : <Lock className="w-4 h-4 text-[#C8A253]" />}
+                  <span>
+                    {cert.earned
+                      ? 'عرض وتحميل الشهادة'
+                      : `معاينة الشهادة (تفتح عند المستوى ${toArabicDigits(cert.requiredLevel)})`}
+                  </span>
+                </button>
+              </article>
+            ))}
+          </div>
+
+          {/* 30 Juz Memorization Quick Verification Checklist */}
+          <div className="glass-panel rounded-2xl p-6 space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base sm:text-lg font-display font-bold text-[#F5F3EE]">
+                توثيق الأجزاء المحفوظة من القرآن الكريم (١ – ٣٠)
+              </h3>
+              <p className="text-xs text-[#A9B2AE]">
+                حدّد أي جزء أتممت حفظه من كتاب الله لتفعيل شهادة التقدير الخاصة بحفظ الأجزاء فورًا وتوثيق عدد الأجزاء داخلها:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2">
+              {JUZ_NAMES_AR.map((juzName, idx) => {
+                const juzNum = idx + 1;
+                const checked = listenerStats.verifiedMemorizedJuzs.includes(juzNum);
+                return (
+                  <button
+                    key={juzNum}
+                    type="button"
+                    aria-pressed={checked}
+                    onClick={() => updateListenerStats(toggleMemorizedJuz(listenerStats, juzNum))}
+                    className={`px-3 py-2.5 rounded-xl border text-right text-xs transition-colors flex items-center justify-between gap-2 cursor-pointer ${
+                      checked
+                        ? 'bg-[#0E6B4D]/35 border-[#178A64] text-[#F5F3EE] font-semibold'
+                        : 'bg-[#0A0D0C]/70 border-white/10 text-[#A9B2AE] hover:border-[#C8A253]/40 hover:text-white'
+                    }`}
+                  >
+                    <span className="truncate">{juzName}</span>
+                    {checked && <Check className="w-3.5 h-3.5 text-[#6EE7B7] shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Playlists Tab */}
       {tab === 'playlists' && (
         <div className="space-y-6">
@@ -524,7 +867,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
                         className="flex items-center gap-3 text-right flex-1 min-w-0 cursor-pointer"
                       >
                         {matchedReciter && (
-                          <img
+                          <ReciterImage
                             src={matchedReciter.photoUrl}
                             alt={matchedReciter.nameAr}
                             className="w-11 h-11 rounded-xl object-cover object-top border border-white/10 shrink-0"
@@ -781,6 +1124,16 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({ navigate }) => {
           </div>
         </div>
       )}
+      <CertificateModal
+        certificate={selectedCertificate}
+        certificatesConfig={config.certificates}
+        recipientName={listenerStats.recipientName}
+        onRecipientNameChange={(nextName) =>
+          updateListenerStats({ ...listenerStats, recipientName: nextName })
+        }
+        onClose={() => setSelectedCertificateId(null)}
+        onDownloaded={() => notify('تم تنزيل شهادة التقدير بنجاح بارك الله فيك', 'success')}
+      />
     </main>
   );
 };

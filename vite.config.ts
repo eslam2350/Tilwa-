@@ -46,7 +46,7 @@ export default defineConfig(() => {
             {
               name: 'أعلام القراء',
               short_name: 'القراء',
-              description: 'تصفح مكتبة ٣٦ من أعلام القراء',
+              description: 'تصفح مكتبة ١٠٩ من أعلام القراء',
               url: '/#/reciters',
               icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
             },
@@ -119,7 +119,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
           type: 'module',
         },
       }),
@@ -127,7 +127,7 @@ export default defineConfig(() => {
       // "/src/assets/images/..." still resolve in production builds.
       {
         name: 'copy-unbundled-src-assets',
-        apply: 'build',
+        apply: 'build' as const,
         closeBundle(error?: Error): void {
           if (error) {
             return;
@@ -140,40 +140,39 @@ export default defineConfig(() => {
           }
         },
       },
-      {
-        name: 'apk-download-headers',
-        configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url && req.url.split('?')[0].endsWith('.apk')) {
-              res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-              res.setHeader('Content-Disposition', 'attachment; filename="debug.apk"');
-            }
-            next();
-          });
-        },
-        configurePreviewServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url && req.url.split('?')[0].endsWith('.apk')) {
-              res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-              res.setHeader('Content-Disposition', 'attachment; filename="debug.apk"');
-            }
-            next();
-          });
-        },
-      },
     ],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
       },
     },
+    build: {
+      target: 'es2022',
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/')) {
+              return 'react-vendor';
+            }
+            if (id.includes('/node_modules/lucide-react/')) {
+              return 'icons-vendor';
+            }
+            if (id.includes('/node_modules/firebase/') || id.includes('/node_modules/@firebase/')) {
+              return 'firebase-vendor';
+            }
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
-      allowedHosts: true,
-      hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      allowedHosts: true as const,
+      hmr: false as const,
+      ws: false as const,
+      watch: null,
     },
     preview: {
-      allowedHosts: true,
+      allowedHosts: true as const,
     },
   };
 });

@@ -23,14 +23,22 @@ import {
   X,
 } from 'lucide-react';
 import { DEVELOPER_NAME, QURAN_META } from '../data/reciters';
+import { SectionBoostWrapper } from '../components/SectionBoostWrapper';
 import { useAppData } from '../contexts/AppDataContext';
 import { useAudioPlayer } from '../contexts/AudioPlayerContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useDynamicConfig } from '../contexts/DynamicConfigContext';
+import {
+  loadListenerStats,
+  recordPageRead,
+  saveListenerStats,
+} from '../utils/certificateHelpers';
 import {
   fetchAyahTafseer,
   fetchJuzUthmani,
   fetchPageUthmani,
   fetchSurahUthmani,
+  prefetchPageUthmani,
   searchQuranVerses,
   type QuranSearchMatch,
 } from '../services/quranApi';
@@ -65,6 +73,7 @@ export const MushafPage: React.FC<MushafPageProps> = ({
   navigate,
 }) => {
   const { reciters, notify } = useAppData();
+  const { config } = useDynamicConfig();
   const { playSurahByReciter, currentTrack } = useAudioPlayer();
   const { prefs, saveReadingPosition, savePreferences, isFavorite, toggleFavorite } = useAuth();
 
@@ -76,8 +85,14 @@ export const MushafPage: React.FC<MushafPageProps> = ({
   const [surahNum, setSurahNum] = useState<number>(initialSurah || prefs.lastReadSurah || 1);
   const [pageNum, setPageNum] = useState<number>(initialPage || prefs.lastReadPage || 1);
   const [juzNum, setJuzNum] = useState<number>(initialJuz || 1);
-  const [fontSize, setFontSize] = useState<number>(prefs.fontSize || 28);
-  const [selectedReciterId, setSelectedReciterId] = useState<string>(reciters[0]?.id || 'minshawi');
+  const [fontSize, setFontSize] = useState<number>(
+    prefs.fontSize || config.mushaf?.defaultFontSizePx || 28
+  );
+  const [selectedReciterId, setSelectedReciterId] = useState<string>(() => {
+    const adminDefault = config.mushaf?.defaultReciterId;
+    if (adminDefault && reciters.some((r) => r.id === adminDefault)) return adminDefault;
+    return reciters[0]?.id || 'minshawi';
+  });
   const [paperTheme, setPaperTheme] = useState<MushafTheme>(() => {
     try {
       const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -85,6 +100,8 @@ export const MushafPage: React.FC<MushafPageProps> = ({
     } catch {
       // ignore
     }
+    const adminTheme = config.mushaf?.defaultTheme;
+    if (adminTheme === 'sepia' || adminTheme === 'light') return 'parchment';
     return 'obsidian';
   });
 
@@ -182,6 +199,8 @@ export const MushafPage: React.FC<MushafPageProps> = ({
           setAyahs(data);
           if (data[0]) {
             void savePositionRef.current(data[0].surahNumber, data[0].page, data[0].numberInSurah);
+            const todayIso = new Date().toISOString().slice(0, 10);
+            saveListenerStats(recordPageRead(loadListenerStats(), data[0].page, todayIso));
           }
         }
       } catch (err) {
@@ -194,6 +213,10 @@ export const MushafPage: React.FC<MushafPageProps> = ({
     };
 
     void load();
+    if (mode === 'page') {
+      prefetchPageUthmani(pageNum + 1);
+      prefetchPageUthmani(pageNum - 1);
+    }
     return () => {
       cancelled = true;
     };
@@ -334,6 +357,7 @@ export const MushafPage: React.FC<MushafPageProps> = ({
   const activePageNumber = ayahs[0]?.page || pageNum;
   const activeJuzNumber = ayahs[0]?.juz || juzNum;
   const activeHizbLabel = formatHizbLabel(ayahs[0]?.hizbQuarter);
+  const readingCompletionPct = Math.min(100, Math.max(1, Math.round((activePageNumber / 604) * 100)));
 
   const stepNavigation = useCallback(
     (direction: 'next' | 'prev') => {
@@ -402,7 +426,7 @@ export const MushafPage: React.FC<MushafPageProps> = ({
   return (
     <div className="min-h-screen bg-[#070908] flex flex-col">
       {/* Standalone Mushaf App Top Header */}
-      <header className="sticky top-0 z-30 glass-panel border-b border-[#C8A253]/20">
+      <header className="sticky top-0 z-30 glass-bar border-b border-[#C8A253]/20">
         <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
@@ -422,9 +446,9 @@ export const MushafPage: React.FC<MushafPageProps> = ({
                   المصحف الشريف · {activeSurahName}
                 </h1>
               </div>
-              <p className="text-[11px] text-[#A9B2AE] truncate">
+              <p className="text-[11px] text-[#A9B2AE] truncate font-mono-nums">
                 الجزء {toArabicDigits(activeJuzNumber)}
-                {activeHizbLabel ? ` · ${activeHizbLabel}` : ''} · صفحة {toArabicDigits(activePageNumber)} من ٦٠٤
+                {activeHizbLabel ? ` · ${activeHizbLabel}` : ''} · صفحة {toArabicDigits(activePageNumber)} من ٦٠٤ · {toArabicDigits(readingCompletionPct)}٪
               </p>
             </div>
           </div>
@@ -501,6 +525,13 @@ export const MushafPage: React.FC<MushafPageProps> = ({
               </button>
             </div>
           </div>
+        </div>
+        {/* Subtle Khatmah Progress Hairline */}
+        <div className="h-0.5 w-full bg-white/5 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-l from-[#178A64] to-[#C8A253] transition-all duration-300"
+            style={{ width: `${Math.min(100, Math.max(1, Math.round((activePageNumber / 604) * 100)))}%` }}
+          />
         </div>
       </header>
 
@@ -845,8 +876,9 @@ export const MushafPage: React.FC<MushafPageProps> = ({
         )}
 
         {/* Authentic Continuous Uthmani Mushaf Page Canvas — ZERO Artificial Justification / Word Stretching */}
-        <section
-          className={`${frameClass} rounded-3xl p-5 sm:p-10 md:p-14 min-h-[540px]`}
+        <SectionBoostWrapper sectionId="mushafSection">
+          <section
+            className={`${frameClass} rounded-3xl p-5 sm:p-10 md:p-14 min-h-[540px]`}
           onTouchStart={(e) => {
             const touch = e.touches[0];
             if (touch) {
@@ -1038,6 +1070,7 @@ export const MushafPage: React.FC<MushafPageProps> = ({
             </button>
           </div>
         </section>
+        </SectionBoostWrapper>
       </main>
 
       {/* Standalone Floating Bottom Page-Turn Dock (Always reachable with one thumb tap) */}

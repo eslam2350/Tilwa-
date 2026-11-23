@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAyahConnectionQuiz,
   buildEveryAyahUrl,
   buildTahfeezQuiz,
   calculateTahfeezStats,
   clampAyahRange,
   computeEchoDelayMs,
+  computeStreakDays,
+  evaluateVoiceRecitation,
+  extractPageSurahRange,
   maskAyahWords,
 } from './tahfeezHelpers';
 import type { AyahItem } from '../types/tilawa';
@@ -104,3 +108,92 @@ test('calculateTahfeezStats counts unique memorized ayahs and completed surahs',
   assert.equal(stats.completedSurahs, 1);
   assert.equal(stats.percentage, 0.1);
 });
+
+test('buildAyahConnectionQuiz builds 4-option next-ayah questions and returns empty when < 2 ayahs', () => {
+  const ayahs: AyahItem[] = [
+    {
+      number: 1,
+      numberInSurah: 1,
+      text: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
+      surahNumber: 1,
+      surahName: 'سُورَةُ ٱلْفَاتِحَةِ',
+      juz: 1,
+      page: 1,
+    },
+    {
+      number: 2,
+      numberInSurah: 2,
+      text: 'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ',
+      surahNumber: 1,
+      surahName: 'سُورَةُ ٱلْفَاتِحَةِ',
+      juz: 1,
+      page: 1,
+    },
+    {
+      number: 3,
+      numberInSurah: 3,
+      text: 'ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
+      surahNumber: 1,
+      surahName: 'سُورَةُ ٱلْفَاتِحَةِ',
+      juz: 1,
+      page: 1,
+    },
+  ];
+  assert.deepEqual(buildAyahConnectionQuiz([ayahs[0]], 3), []);
+
+  const quiz = buildAyahConnectionQuiz(ayahs, 4);
+  assert.equal(quiz.length, 2);
+  assert.equal(quiz[0].promptAyahNumberInSurah, 1);
+  assert.equal(quiz[0].nextAyahNumberInSurah, 2);
+  for (const q of quiz) {
+    assert.equal(q.options.length, 4);
+    assert.equal(new Set(q.options).size, 4);
+    assert.equal(q.options.includes(q.nextAyahText), true);
+  }
+});
+
+test('computeStreakDays computes consecutive streaks up to reference date or yesterday', () => {
+  assert.equal(computeStreakDays([], '2026-11-22'), 0);
+  assert.equal(
+    computeStreakDays(['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-22'], '2026-11-22'),
+    3
+  );
+  assert.equal(computeStreakDays(['2026-11-19', '2026-11-21'], '2026-11-22'), 1);
+  assert.equal(computeStreakDays(['2026-11-15'], '2026-11-22'), 0);
+});
+
+test('evaluateVoiceRecitation compares spoken Arabic transcript accurately against Uthmani text', () => {
+  const resExact = evaluateVoiceRecitation(
+    'الحمد لله رب العالمين',
+    'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ'
+  );
+  assert.equal(resExact.accuracy, 100);
+  assert.equal(resExact.matchedWords, 4);
+
+  const resPartial = evaluateVoiceRecitation(
+    'الحمد لله العالمين',
+    'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ'
+  );
+  assert.equal(resPartial.matchedWords, 3);
+  assert.equal(resPartial.accuracy, 75);
+});
+
+test('extractPageSurahRange maps Mushaf page ayahs to surah and start/end ayah bounds', () => {
+  const samplePage: AyahItem[] = [
+    { number: 6222, numberInSurah: 1, text: 'قُلْ هُوَ ٱللَّهُ أَحَدٌ', surahNumber: 112, surahName: 'الإخلاص', juz: 30, page: 604 },
+    { number: 6225, numberInSurah: 4, text: 'وَلَمْ يَكُن لَّهُۥ كُفُوًا أَحَدٌۢ', surahNumber: 112, surahName: 'الإخلاص', juz: 30, page: 604 },
+    { number: 6226, numberInSurah: 1, text: 'قُلْ أَعُوذُ بِرَبِّ ٱلْفَلَقِ', surahNumber: 113, surahName: 'الفلق', juz: 30, page: 604 },
+  ];
+  const mapped = extractPageSurahRange(samplePage);
+  assert.equal(mapped?.surahNumber, 112);
+  assert.equal(mapped?.startAyah, 1);
+  assert.equal(mapped?.endAyah, 4);
+  assert.equal(mapped?.surahSegments.length, 2);
+
+  const mappedPref = extractPageSurahRange(samplePage, 113);
+  assert.equal(mappedPref?.surahNumber, 113);
+  assert.equal(mappedPref?.startAyah, 1);
+  assert.equal(mappedPref?.endAyah, 1);
+});
+
+

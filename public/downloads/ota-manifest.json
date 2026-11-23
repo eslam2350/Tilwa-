@@ -1,8 +1,8 @@
 {
-  "version": "1.0.bc7fbab1",
-  "builtAt": "2026-11-19T20:04:26.915Z",
-  "sha256": "bc7fbab13c5124e7847a2c76d919e80bd91cbb1a0655dea3f8a84b89a8b0c184",
-  "sizeBytes": 14435087,
+  "version": "1.0.bade7f9c",
+  "builtAt": "2026-11-22T08:21:29.941Z",
+  "sha256": "bade7f9c7792a4b500eb9b088251c431cf8cf7cd7684806adc6f4863684b1dea",
+  "sizeBytes": 70710136,
   "bundleUrl": "https://ais-pre-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/downloads/index.html",
   "devBundleUrl": "https://ais-dev-yohyjyrr4bd6elu2ixq7e7-1009876701033.europe-west2.run.app/downloads/index.html"
 }

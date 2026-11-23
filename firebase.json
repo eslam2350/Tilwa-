@@ -27,7 +27,7 @@
         ]
       },
       {
-        "source": "/@(sw.js|downloads/ota-manifest.json)",
+        "source": "/@(index.html|sw.js|downloads/index.html|downloads/ota-manifest.json)",
         "headers": [
           {
             "key": "Cache-Control",

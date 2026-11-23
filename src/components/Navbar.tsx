@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { BookOpen, GraduationCap, Home, Library, Pause, Play, Search, Users } from 'lucide-react';
+import { BookOpen, GraduationCap, Home, Library, Pause, Play, Podcast, Search, Users } from 'lucide-react';
 import { useAppData } from '../contexts/AppDataContext';
 import { useAudioPlayer } from '../contexts/AudioPlayerContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useDynamicConfig } from '../contexts/DynamicConfigContext';
 import type { AppRoute, NavPageId } from '../types/tilawa';
+import { prefetchRouteChunk } from '../App';
 import { AudioWaveBars } from './AudioWaveBars';
 
 interface NavbarProps {
@@ -15,6 +16,7 @@ interface NavbarProps {
 const NAV_ICON_MAP: Record<NavPageId, React.ReactNode> = {
   home: <Home className="w-5 h-5" />,
   reciters: <Users className="w-5 h-5" />,
+  basira: <Podcast className="w-5 h-5" />,
   mushaf: <BookOpen className="w-5 h-5" />,
   tahfeez: <GraduationCap className="w-5 h-5" />,
   search: <Search className="w-5 h-5" />,
@@ -24,6 +26,7 @@ const NAV_ICON_MAP: Record<NavPageId, React.ReactNode> = {
 const NAV_ROUTE_MAP: Record<NavPageId, AppRoute> = {
   home: { page: 'home' },
   reciters: { page: 'reciters' },
+  basira: { page: 'basira' },
   mushaf: { page: 'mushaf' },
   tahfeez: { page: 'tahfeez' },
   search: { page: 'search' },
@@ -51,6 +54,9 @@ export const Navbar: React.FC<NavbarProps> = ({ route, navigate }) => {
 
   const isActive = (id: NavPageId) => {
     if (id === 'reciters' && route.page === 'reciter') return true;
+    if (id === 'basira' && (route.page === 'basira' || route.page === 'basira-preacher' || route.page === 'basira-episode')) {
+      return true;
+    }
     return route.page === id;
   };
 
@@ -74,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({ route, navigate }) => {
 
   return (
     <>
-      <header className="relative md:sticky md:top-0 z-40 glass-panel border-b border-[#C8A253]/20">
+      <header className="relative md:sticky md:top-0 z-40 glass-bar border-b border-[#C8A253]/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 md:h-16 flex items-center justify-between gap-6">
           {/* Zone 1: Single-line Brand Wordmark */}
           <button
@@ -97,6 +103,8 @@ export const Navbar: React.FC<NavbarProps> = ({ route, navigate }) => {
                 <button
                   key={item.id}
                   type="button"
+                  onMouseEnter={() => prefetchRouteChunk(item.id)}
+                  onFocus={() => prefetchRouteChunk(item.id)}
                   onClick={() => navigate(item.route)}
                   className={`relative py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     active ? 'text-[#C8A253]' : 'text-[#A9B2AE] hover:text-[#F5F3EE]'
@@ -141,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({ route, navigate }) => {
       {/* Mobile Bottom Tab Bar (Compact 56px height) */}
       <nav
         aria-label="تنقل الجوال"
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 h-14 glass-panel border-t border-[#C8A253]/20 flex items-center"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 h-14 glass-bar border-t border-[#C8A253]/20 flex items-center"
       >
         {navItems.map((item) => {
           const active = isActive(item.id);
@@ -149,6 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({ route, navigate }) => {
             <button
               key={item.id}
               type="button"
+              onTouchStart={() => prefetchRouteChunk(item.id)}
               onClick={() => navigate(item.route)}
               className={`relative flex-1 flex flex-col items-center justify-center min-h-[44px] py-1 transition-colors cursor-pointer ${
                 active ? 'text-[#C8A253]' : 'text-[#A9B2AE]'

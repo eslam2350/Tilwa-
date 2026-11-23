@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ReciterImageProps {
   src: string;
@@ -9,10 +9,10 @@ interface ReciterImageProps {
 
 function getInitials(name: string): string {
   const cleaned = name
-    .replace(/الشيخ|الدكتور|القارئ|د\./g, '')
+    .replace(/الشيخ|الدكتور|الداعية|المهندس|القارئ|د\.|م\./g, '')
     .trim();
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return 'ق';
+  if (parts.length === 0) return 'ب';
   if (parts.length === 1) return parts[0].slice(0, 2);
   return `${parts[0][0] || ''} ${parts[1][0] || ''}`.trim();
 }
@@ -21,9 +21,13 @@ export const ReciterImage: React.FC<ReciterImageProps> = ({
   src,
   alt,
   className = '',
-  loading = 'lazy',
+  loading = 'eager',
 }) => {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (failed || !src) {
     return (

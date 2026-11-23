@@ -5,7 +5,7 @@ import type {
   PlaylistTrack,
   UserPlaylist,
 } from '../types/tilawa';
-import { clampFontSize, sanitizeFirestoreId } from '../utils/quranHelpers';
+import { clampFontSize, isBlockedReciter, sanitizeFirestoreId } from '../utils/quranHelpers';
 import { useAppData } from './AppDataContext';
 
 const LOCAL_FAV_KEY = 'tilawa_guest_favorites_v1';
@@ -170,9 +170,55 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { notify } = useAppData();
 
-  const initialLibrary = useMemo(() => getInitialPlaylistsAndTracks(), []);
-  const [favorites, setFavorites] = useState<FavoriteItem[]>(() => readJson(LOCAL_FAV_KEY, []));
-  const [history, setHistory] = useState<ListeningHistoryItem[]>(() => readJson(LOCAL_HIST_KEY, []));
+  const initialLibrary = useMemo(() => {
+    const lib = getInitialPlaylistsAndTracks();
+    const cleanedTracks: Record<string, PlaylistTrack[]> = {};
+    let changed = false;
+    for (const [plId, list] of Object.entries(lib.tracks)) {
+      const nextList = list.filter(
+        (t) => !isBlockedReciter({ id: t.reciterId, nameAr: t.reciterName })
+      );
+      if (nextList.length !== list.length) changed = true;
+      cleanedTracks[plId] = nextList;
+    }
+    if (changed) {
+      try {
+        localStorage.setItem(LOCAL_PL_TRK_KEY, JSON.stringify(cleanedTracks));
+      } catch {
+        // ignore
+      }
+    }
+    return { playlists: lib.playlists, tracks: cleanedTracks };
+  }, []);
+
+  const [favorites, setFavorites] = useState<FavoriteItem[]>(() => {
+    const raw = readJson<FavoriteItem[]>(LOCAL_FAV_KEY, []);
+    const clean = raw.filter(
+      (f) => !isBlockedReciter({ id: f.reciterId || f.targetId, nameAr: f.title, titleAr: f.subtitle })
+    );
+    if (clean.length !== raw.length) {
+      try {
+        localStorage.setItem(LOCAL_FAV_KEY, JSON.stringify(clean));
+      } catch {
+        // ignore
+      }
+    }
+    return clean;
+  });
+  const [history, setHistory] = useState<ListeningHistoryItem[]>(() => {
+    const raw = readJson<ListeningHistoryItem[]>(LOCAL_HIST_KEY, []);
+    const clean = raw.filter(
+      (h) => !isBlockedReciter({ id: h.reciterId, nameAr: h.reciterName })
+    );
+    if (clean.length !== raw.length) {
+      try {
+        localStorage.setItem(LOCAL_HIST_KEY, JSON.stringify(clean));
+      } catch {
+        // ignore
+      }
+    }
+    return clean;
+  });
   const [playlists, setPlaylists] = useState<UserPlaylist[]>(initialLibrary.playlists);
   const [playlistTracks, setPlaylistTracks] = useState<Record<string, PlaylistTrack[]>>(
     initialLibrary.tracks

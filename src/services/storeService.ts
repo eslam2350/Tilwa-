@@ -23,7 +23,7 @@ import type {
   UserProfile,
 } from '../types/tilawa';
 import { mergeDynamicConfig } from '../utils/dynamicConfigHelpers';
-import { sanitizeFirestoreId } from '../utils/quranHelpers';
+import { isBlockedReciter, sanitizeFirestoreId } from '../utils/quranHelpers';
 import { db, handleFirestoreError, OperationType } from './firebase';
 
 function trunc(val: string | undefined, max: number): string {
@@ -323,22 +323,22 @@ export async function removeTrackFromPlaylist(
 }
 
 // --- Public Catalog & Admin Management ---
-export async function fetchCustomReciters(): Promise<Reciter[]> {
+export async function fetchRawCustomReciters(): Promise<Reciter[]> {
   const path = 'reciters';
   try {
     const snap = await getDocs(collection(db, 'reciters'));
     return snap.docs.map((d) => {
       const data = d.data();
       return {
-        id: data.id,
-        nameAr: data.nameAr,
-        nameEn: data.nameEn,
-        titleAr: data.titleAr,
-        bioAr: data.bioAr,
+        id: data.id || d.id,
+        nameAr: data.nameAr || '',
+        nameEn: data.nameEn || '',
+        titleAr: data.titleAr || '',
+        bioAr: data.bioAr || '',
         birthYear: data.birthYear || '',
         deathYear: data.deathYear || '',
         originAr: data.originAr || '',
-        photoUrl: data.photoUrl,
+        photoUrl: data.photoUrl || '',
         photoSource: data.photoSource || '',
         featured: Boolean(data.featured),
         collections: [],
@@ -347,6 +347,11 @@ export async function fetchCustomReciters(): Promise<Reciter[]> {
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
   }
+}
+
+export async function fetchCustomReciters(): Promise<Reciter[]> {
+  const all = await fetchRawCustomReciters();
+  return all.filter((r) => !isBlockedReciter(r));
 }
 
 export async function upsertAdminReciter(reciter: Omit<Reciter, 'collections'>): Promise<void> {
@@ -390,14 +395,19 @@ export async function deleteAdminReciter(reciterId: string): Promise<void> {
   }
 }
 
-export async function fetchAdminRecitations(): Promise<CuratedRecitation[]> {
+export async function fetchRawAdminRecitations(): Promise<CuratedRecitation[]> {
   const path = 'recitations';
   try {
     const snap = await getDocs(collection(db, 'recitations'));
-    return snap.docs.map((d) => d.data() as CuratedRecitation);
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id } as CuratedRecitation));
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
   }
+}
+
+export async function fetchAdminRecitations(): Promise<CuratedRecitation[]> {
+  const all = await fetchRawAdminRecitations();
+  return all.filter((rec) => !isBlockedReciter({ id: rec.reciterId }));
 }
 
 export async function upsertAdminRecitation(rec: CuratedRecitation): Promise<void> {

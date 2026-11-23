@@ -173,6 +173,12 @@ export async function fetchPageUthmani(pageNumber: number): Promise<AyahItem[]> 
   return mapped;
 }
 
+export function prefetchPageUthmani(pageNumber: number): void {
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) return;
+  if (pageCache.has(pageNumber)) return;
+  void fetchPageUthmani(pageNumber).catch(() => {});
+}
+
 export async function fetchJuzUthmani(juzNumber: number): Promise<AyahItem[]> {
   if (juzCache.has(juzNumber)) {
     return juzCache.get(juzNumber)!;
